@@ -65,7 +65,7 @@ public class ghidra_string_sniperPlugin extends ProgramPlugin {
 
 	    // Put the action in the right-click menu
 	    popupAction.setPopupMenuData(new MenuData(
-	        new String[] { "String Sniper..." }, // Menu path
+	        new String[] { "Run String Sniper" }, // Menu path
 	        Icons.INFO_ICON));       // Optional icon
 
 	    // Make the action always enabled (or add your own enablement logic)
