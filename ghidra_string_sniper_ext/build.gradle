@@ -42,7 +42,7 @@ else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
 task distributeExtension {
 	group = "Ghidra"
 
-	apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+	apply from: file(ghidraInstallDir + "/support/buildExtension.gradle")
 	dependsOn ':buildExtension'
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
