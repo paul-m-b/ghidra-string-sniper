@@ -17,16 +17,15 @@ package ghidra_string_sniper;
 
 import javax.swing.*;
 
-import docking.ActionContext;
+import docking.ComponentProvider;
 import docking.action.DockingAction;
-import docking.action.MenuData;
 import ghidra.app.ExamplesPluginPackage;
-import ghidra.app.context.ListingActionContext;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
 import ghidra.framework.plugintool.*;
 import ghidra.framework.plugintool.util.PluginStatus;
 import resources.Icons;
+import ghidra.framework.plugintool.PluginTool;
 
 /**
  * Provide class-level documentation that describes what this plugin does.
@@ -42,37 +41,43 @@ import resources.Icons;
 //@formatter:on
 public class ghidra_string_sniperPlugin extends ProgramPlugin {
 
+	DockingAction action;
+	StringSniperDockableProvider provider;
+
 	public ghidra_string_sniperPlugin(PluginTool tool) {
 		super(tool);
+
+		createActions();
 	}
 
-	@Override
-	public void init() {
-		super.init();
+	private void createActions() {
 
-		// Acquire services if necessary
-		DockingAction popupAction = new DockingAction("String Sniper Popup", getName()) {
-	        @Override
-	        public void actionPerformed(ActionContext context) {
-	            // Show your popup window
-	            JOptionPane.showMessageDialog(null, "Hello from String Sniper!");
-	        }
-	        @Override
-	        public boolean isEnabledForContext(ActionContext context) {
-	            return context instanceof ListingActionContext;
-	        }
-	    };
+		// set up provider
+		provider = new StringSniperDockableProvider(tool, getName());
+		provider.addToTool();
+	}
 
-	    // Put the action in the right-click menu
-	    popupAction.setPopupMenuData(new MenuData(
-	        new String[] { "Run String Sniper" }, // Menu path
-	        Icons.INFO_ICON));       // Optional icon
+	static class StringSniperDockableProvider extends ComponentProvider {
+		private JPanel panel;
 
-	    // Make the action always enabled (or add your own enablement logic)
-	    popupAction.setEnabled(true);
+		public StringSniperDockableProvider(PluginTool tool, String owner) {
+			super(tool, "Ghidra String Sniper Provider", owner);
 
-	    // Register the action
-	    tool.addAction(popupAction);
+			buildPanel();
 
+			setTitle("String Sniper");
+			setIcon(Icons.NOT_ALLOWED_ICON);
+		}
+
+		private void buildPanel() {
+			panel = new JPanel();
+			panel.add(new JLabel("Hello, this is my dockable window!"));
+		}
+
+		@Override
+		public JComponent getComponent() {
+			return panel;
+		}
 	}
 }
+
