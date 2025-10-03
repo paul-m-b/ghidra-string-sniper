@@ -1,7 +1,6 @@
 package ghidra_string_sniper;
 
 import javax.swing.*;
-import java.awt.FlowLayout;
 
 import docking.ComponentProvider;
 import docking.action.DockingAction;
@@ -12,10 +11,8 @@ import ghidra.framework.plugintool.util.PluginStatus;
 import resources.Icons;
 import ghidra.framework.plugintool.PluginTool;
 
-/**
- * Provide class-level documentation that describes what this plugin does.
- */
 //@formatter:off
+// metadata
 @PluginInfo(
 	status = PluginStatus.STABLE,
 	packageName = "Ghidra String Sniper",
@@ -24,12 +21,12 @@ import ghidra.framework.plugintool.PluginTool;
 	description = "Plugin long description goes here."
 )
 //@formatter:on
-public class ghidra_string_sniperPlugin extends ProgramPlugin {
+// plugin class
+public class StringSniperPlugin extends ProgramPlugin {
 
-	DockingAction action;
 	StringSniperDockableProvider provider;
 
-	public ghidra_string_sniperPlugin(PluginTool tool) {
+	public StringSniperPlugin(PluginTool tool) {
 		super(tool);
 
 		createActions();
