@@ -1,6 +1,7 @@
 package ghidra_string_sniper;
 
 import javax.swing.*;
+import java.awt.FlowLayout;
 
 import docking.ComponentProvider;
 import docking.action.DockingAction;
@@ -59,9 +60,8 @@ public class ghidra_string_sniperPlugin extends ProgramPlugin {
 
 			// strings panel
 			JPanel stringsPanel = new JPanel();
-			stringsPanel.setLayout(new BoxLayout(stringsPanel, BoxLayout.Y_AXIS)); 
-			stringsPanel.add(new JLabel("Hello, this is the strings panel."));
-			tabbedPane.addTab("Strings", stringsPanel);
+			stringsPanel.setLayout(new BoxLayout(stringsPanel, BoxLayout.Y_AXIS));
+			tabbedPane.add("String", stringsPanel);
 
 			// string list
 			DefaultListModel<String> listModel = new DefaultListModel<>();
@@ -84,7 +84,6 @@ public class ghidra_string_sniperPlugin extends ProgramPlugin {
 			// results panel
 			JPanel resultsPanel = new JPanel();
 			resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS)); 
-			resultsPanel.add(new JLabel("Hello, this is the results panel."));
 			tabbedPane.addTab("Results", resultsPanel);
 		}
 
