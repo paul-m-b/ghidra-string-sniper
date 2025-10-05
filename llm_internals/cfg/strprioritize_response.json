@@ -1,0 +1,21 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "final_list",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "sorted_string_list": {
+          "type": "array",
+          "description": "A list of the provided strings sorted by priority.",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      },
+      "required": ["sorted_string_list"],
+      "additionalProperties": false
+    }
+  }
+}
+
