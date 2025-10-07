@@ -48,7 +48,12 @@ public class StringSniperPlugin extends ProgramPlugin {
 			buildPanel();
 
 			setTitle("String Sniper");
-			setIcon(Icons.NOT_ALLOWED_ICON);
+			java.net.URL iconURL = getClass().getResource("/images/templogo.png");
+			if (iconURL != null) {
+				setIcon(new ImageIcon(iconURL));
+			} else {
+				setIcon(Icons.NOT_ALLOWED_ICON);
+			}
 		}
 
 		private void buildPanel() {
