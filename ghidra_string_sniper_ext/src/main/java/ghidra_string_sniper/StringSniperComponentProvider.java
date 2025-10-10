@@ -8,6 +8,7 @@ import resources.Icons;
 
 public class StringSniperComponentProvider extends ComponentProvider {
 	private JTabbedPane tabbedPane;
+	private DefaultListModel<String> stringListModel;
 
 	public StringSniperComponentProvider(PluginTool tool, String owner) {
 		super(tool, "Ghidra String Sniper Provider", owner);
@@ -26,6 +27,14 @@ public class StringSniperComponentProvider extends ComponentProvider {
 		addLocalAction(new SearchForStringsAction(this, owner));
 	}
 
+	public void clearStringResults() {
+		stringListModel.clear();
+	}
+
+	public void addStringResult(String result) {
+		stringListModel.addElement(result);
+	}
+
 	private void buildPanel() {
 		// tabbed menu
 		tabbedPane = new JTabbedPane();
@@ -33,21 +42,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
 		// strings panel
 		JPanel stringsPanel = new JPanel();
 		stringsPanel.setLayout(new BoxLayout(stringsPanel, BoxLayout.Y_AXIS));
-		tabbedPane.add("String", stringsPanel);
+		tabbedPane.add("Strings", stringsPanel);
 
 		// string list
-		DefaultListModel<String> listModel = new DefaultListModel<>();
-		listModel.addElement("First Item");
-		listModel.addElement("Second Item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		listModel.addElement("Another item");
-		JList<String> stringList = new JList<>(listModel);
+		stringListModel = new DefaultListModel<>();
+		JList<String> stringList = new JList<>(stringListModel);
 
 		// scroll pane
 		JScrollPane scrollPane = new JScrollPane(stringList);
