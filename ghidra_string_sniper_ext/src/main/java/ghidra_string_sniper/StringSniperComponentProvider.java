@@ -40,22 +40,27 @@ public class StringSniperComponentProvider extends ComponentProvider {
 		tabbedPane = new JTabbedPane();
 
 		// strings panel
-		JPanel stringsPanel = new JPanel();
-		stringsPanel.setLayout(new BoxLayout(stringsPanel, BoxLayout.Y_AXIS));
-		tabbedPane.add("Strings", stringsPanel);
+		{
+			JPanel stringsPanel = new JPanel();
+			stringsPanel.setLayout(new BoxLayout(stringsPanel, BoxLayout.Y_AXIS));
 
-		// string list
-		stringListModel = new DefaultListModel<>();
-		JList<String> stringList = new JList<>(stringListModel);
+			// string list
+			stringListModel = new DefaultListModel<>();
+			JList<String> stringList = new JList<>(stringListModel);
 
-		// scroll pane
-		JScrollPane scrollPane = new JScrollPane(stringList);
-		stringsPanel.add(scrollPane);
+			// scroll pane
+			JScrollPane scrollPane = new JScrollPane(stringList);
+			stringsPanel.add(scrollPane);
+
+			tabbedPane.add("Strings", stringsPanel);
+		}
 
 		// results panel
-		JPanel resultsPanel = new JPanel();
-		resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS)); 
-		tabbedPane.addTab("Results", resultsPanel);
+		{
+			JPanel resultsPanel = new JPanel();
+			resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS)); 
+			tabbedPane.addTab("Results", resultsPanel);
+		}
 	}
 
 	@Override
