@@ -7,9 +7,6 @@ import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Program;
 import ghidra.program.util.DefinedStringIterator;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import docking.ActionContext;
 import docking.ComponentProvider;
 import resources.Icons;
@@ -29,7 +26,6 @@ public class SearchForStringsAction extends DockingAction {
             Program program = sscp.getTool().getService(ProgramManager.class).getCurrentProgram();
             sscp.clearStringResults();
             // start the search
-            List<String> foundStrings = new ArrayList<>();
             DefinedStringIterator itr = DefinedStringIterator.forProgram(program);
             while (itr.hasNext()) {
                 Data stringData = itr.next();
@@ -40,18 +36,9 @@ public class SearchForStringsAction extends DockingAction {
 						// Get the starting address for the defined string
 						Address addr = stringData.getAddress(); // or stringData.getMinAddress()
 						// add to provider including address
-						sscp.addStringResultWithAddress(stringValue, addr);
-
-						// optionally still collect string values for alphabetical order
-						foundStrings.add(stringValue);
+						sscp.addStringData(new StringData(stringValue, addr));
 					}
                 }
-            }
-        
-            //Sorts alphabetically when using this option. 
-            Collections.sort(foundStrings, String.CASE_INSENSITIVE_ORDER);
-            for (String s: foundStrings){
-                sscp.addStringResult(s);
             }
         }
     }

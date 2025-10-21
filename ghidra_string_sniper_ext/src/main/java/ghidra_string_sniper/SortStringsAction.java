@@ -2,13 +2,7 @@ package ghidra_string_sniper;
 
 import docking.action.DockingAction;
 import docking.action.ToolBarData;
-import ghidra.app.services.ProgramManager;
-import ghidra.program.model.data.StringDataInstance;
-import ghidra.program.model.listing.Data;
-import ghidra.program.model.listing.Program;
-import ghidra.program.util.DefinedStringIterator;
 import docking.ActionContext;
-import docking.ComponentProvider;
 import resources.Icons;
 
 public class SortStringsAction extends DockingAction {
@@ -24,7 +18,7 @@ public class SortStringsAction extends DockingAction {
 
 	@Override
 	public void actionPerformed(ActionContext context) {
-		provider.sortStringResults();
+		// provider.sortStringResults();
 	}
 
 	@Override

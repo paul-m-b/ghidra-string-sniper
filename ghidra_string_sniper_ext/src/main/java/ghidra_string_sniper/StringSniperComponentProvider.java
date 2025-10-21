@@ -1,21 +1,27 @@
 package ghidra_string_sniper;
 
 import javax.swing.*;
+import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableModel;
+
 import java.awt.*;
 import java.awt.event.*;
 import java.util.*;
 import java.util.List;
 import docking.ComponentProvider;
 import ghidra.framework.plugintool.PluginTool;
-import ghidra.program.model.address.Address;
 import resources.Icons;
 
 public class StringSniperComponentProvider extends ComponentProvider {
+
+	// Data
+    private StringTableModel stringsTableModel;
+	private Map<String, ResultData> resultData = new HashMap<>();
+	
     private JTabbedPane tabbedPane;
-    private DefaultListModel<String> stringListModel;
-    private List<StringEntry> allEntries = new ArrayList<>();
-    private boolean sortAscending = true;
+
+	// Strings UI
+    private JTable stringsTable;
 
     // Results UI
     private JPanel resultsPanel;
@@ -42,75 +48,51 @@ public class StringSniperComponentProvider extends ComponentProvider {
         addLocalAction(new SortStringsAction(this, owner));
     }
 
-    // ===== String data management =====
+    // === StringData Management
     public void clearStringResults() {
-        stringListModel.clear();
-        allEntries.clear();
+		stringsTableModel.clear();
     }
 
-    public void addStringResultWithAddress(String result, Address addr) {
-        if (allEntries == null) {
-            allEntries = new ArrayList<>();
-        }
-
-        // Remove N/A entries if real address exists
-        if (addr != null) {
-            allEntries.removeIf(e -> e.value.equals(result) && e.address == null);
-        }
-
-        // Avoid duplicate entry with same value and address
-        boolean alreadyExists = allEntries.stream()
-                .anyMatch(e -> Objects.equals(e.value, result) && Objects.equals(e.address, addr));
-        if (!alreadyExists) {
-            allEntries.add(new StringEntry(result, addr));
-        }
-
-        // Update JList to show string if not already present
-        if (!stringListModel.contains(result)) {
-            stringListModel.addElement(result);
-        }
+    public void addStringData(StringData data) {
+		stringsTableModel.add(data);
     }
 
-    public void addStringResult(String result) {
-        addStringResultWithAddress(result, null);
-    }
+    // public void sortStringResults() {
+    //     List<String> strings = Collections.list(stringListModel.elements());
+    //     if (sortAscending) {
+    //         strings.sort(Comparator.comparingInt(String::length));
+    //     } else {
+    //         strings.sort(Comparator.comparingInt(String::length).reversed());
+    //     }
+    //     stringListModel.clear();
+    //     for (String s : strings) {
+    //         stringListModel.addElement(s);
+    //     }
+    //     sortAscending = !sortAscending;
+    // }
 
-    public void sortStringResults() {
-        List<String> strings = Collections.list(stringListModel.elements());
-        if (sortAscending) {
-            strings.sort(Comparator.comparingInt(String::length));
-        } else {
-            strings.sort(Comparator.comparingInt(String::length).reversed());
-        }
-        stringListModel.clear();
-        for (String s : strings) {
-            stringListModel.addElement(s);
-        }
-        sortAscending = !sortAscending;
-    }
+    // private void filterStrings(String query) {
+    //     stringListModel.clear();
+    //     if (query == null || query.isEmpty()) {
+    //         for (StringEntry e : allEntries) {
+    //             if (!stringListModel.contains(e.value)) {
+    //                 stringListModel.addElement(e.value);
+    //             }
+    //         }
+    //         return;
+    //     }
 
-    private void filterStrings(String query) {
-        stringListModel.clear();
-        if (query == null || query.isEmpty()) {
-            for (StringEntry e : allEntries) {
-                if (!stringListModel.contains(e.value)) {
-                    stringListModel.addElement(e.value);
-                }
-            }
-            return;
-        }
+    //     String lower = query.toLowerCase();
+    //     for (StringEntry e : allEntries) {
+    //         if (e.value.toLowerCase().contains(lower)) {
+    //             if (!stringListModel.contains(e.value)) {
+    //                 stringListModel.addElement(e.value);
+    //             }
+    //         }
+    //     }
+    // }
 
-        String lower = query.toLowerCase();
-        for (StringEntry e : allEntries) {
-            if (e.value.toLowerCase().contains(lower)) {
-                if (!stringListModel.contains(e.value)) {
-                    stringListModel.addElement(e.value);
-                }
-            }
-        }
-    }
-
-    // ===== Build UI =====
+    // === Build UI
     private void buildPanel() {
         tabbedPane = new JTabbedPane();
 
@@ -123,30 +105,29 @@ public class StringSniperComponentProvider extends ComponentProvider {
         searchField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyReleased(KeyEvent e) {
-                filterStrings(searchField.getText());
+                // filterStrings(searchField.getText());
             }
         });
         stringsPanel.add(searchField, BorderLayout.NORTH);
 
         // String list
-        stringListModel = new DefaultListModel<>();
-        JList<String> stringList = new JList<>(stringListModel);
-        stringList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        stringsTableModel = new StringTableModel();
+        stringsTable = new JTable(stringsTableModel);
 
         // Double-click handler: switch to Results tab
-        stringList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    String selected = stringList.getSelectedValue();
-                    if (selected != null) {
-                        showResultForString(selected);
-                    }
-                }
-            }
-        });
+        // stringList.addMouseListener(new MouseAdapter() {
+        //     @Override
+        //     public void mouseClicked(MouseEvent e) {
+        //         if (e.getClickCount() == 2) {
+        //             String selected = stringList.getSelectedValue();
+        //             if (selected != null) {
+        //                 showResultForString(selected);
+        //             }
+        //         }
+        //     }
+        // });
 
-        JScrollPane scrollPane = new JScrollPane(stringList);
+        JScrollPane scrollPane = new JScrollPane(stringsTable);
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
         tabbedPane.add("Strings", stringsPanel);
 
@@ -188,36 +169,56 @@ public class StringSniperComponentProvider extends ComponentProvider {
         resultsPanel.revalidate();
     }
 
-    private void showResultForString(String str) {
-        if (allEntries == null) allEntries = new ArrayList<>();
-
-        // Switch to Results tab
-        tabbedPane.setSelectedIndex(1);
-
-        // Clear previous rows
-        resultsTableModel.setRowCount(0);
-
-        // Add only entries with a valid address; if multiple, show all
-        for (StringEntry e : allEntries) {
-            if (e.value.equals(str) && e.address != null) {
-                resultsTableModel.addRow(new Object[]{e.value, e.address.toString(), "", ""});
-            }
-        }
-    }
-
     @Override
     public JComponent getComponent() {
         return tabbedPane;
     }
 
-    // ===== Helper class for string entries =====
-    private static class StringEntry {
-        final String value;
-        final Address address;
+	public class StringTableModel extends AbstractTableModel {
+		List<StringData> stringData = new ArrayList<>();
 
-        StringEntry(String value, Address address) {
-            this.value = value;
-            this.address = address;
-        }
-    }
+		@Override
+		public int getRowCount() {
+			return stringData.size();
+		}
+
+		@Override
+		public int getColumnCount() {
+			return 2;
+		}
+
+		@Override
+		public String getColumnName(int col) {
+			if (col == 0) return "String";
+			if (col == 1) return "Address";
+			return "";
+		}
+
+		@Override
+		public Object getValueAt(int row, int col) {
+			StringData s = stringData.get(row);
+			switch (col) {
+            case 0: return s.value;
+            case 1: return s.address.toString();
+            default: return null;
+			}
+		}
+
+		@Override
+		public boolean isCellEditable(int row, int col) {
+			return false;
+		}
+
+		public void add(StringData string) {
+			stringData.add(string);
+			int row = stringData.size() - 1;
+			fireTableRowsInserted(row, row);
+		}
+
+		public void clear() {
+			int rows = getRowCount();
+			stringData.clear();
+			fireTableRowsDeleted(0, rows);
+		}
+	}
 }
