@@ -24,7 +24,7 @@ public class SearchForStringsAction extends DockingAction {
             // get component provider and program
             StringSniperComponentProvider sscp = (StringSniperComponentProvider)cp;
             Program program = sscp.getTool().getService(ProgramManager.class).getCurrentProgram();
-            sscp.clearStringResults();
+            sscp.clearStrings();
             // start the search
             DefinedStringIterator itr = DefinedStringIterator.forProgram(program);
             while (itr.hasNext()) {
@@ -36,7 +36,7 @@ public class SearchForStringsAction extends DockingAction {
 						// Get the starting address for the defined string
 						Address addr = stringData.getAddress(); // or stringData.getMinAddress()
 						// add to provider including address
-						sscp.addStringData(new StringData(stringValue, addr));
+						sscp.addString(new StringData(stringValue, addr));
 					}
                 }
             }

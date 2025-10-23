@@ -16,20 +16,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
 	// Data
     private StringTableModel stringsTableModel;
-	private Map<String, ResultData> resultData = new HashMap<>();
 	
+	// UI
     private JTabbedPane tabbedPane;
-
-	// Strings UI
     private JTable stringsTable;
-
-    // Results UI
     private JPanel resultsPanel;
-    private JTable resultsTable;
-    private DefaultTableModel resultsTableModel;
-    private JPanel accordionPanel;
-    private JButton accordionButton;
-    private JPanel accordionContent;
 
     public StringSniperComponentProvider(PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
@@ -49,13 +40,43 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     // === StringData Management
-    public void clearStringResults() {
+    public void clearStrings() {
 		stringsTableModel.clear();
     }
 
-    public void addStringData(StringData data) {
-		stringsTableModel.add(data);
+    public void addString(StringData string) {
+		stringsTableModel.add(string);
     }
+
+	public void addResult(ResultData result) {
+		// accordion panel using BoxLayout
+		JPanel accordionPanel = new JPanel();
+		accordionPanel.setLayout(new BoxLayout(accordionPanel, BoxLayout.Y_AXIS));
+
+		JButton accordionButton = new JButton("► " + result.string.value);
+		accordionButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, accordionButton.getPreferredSize().height));
+		accordionButton.setFocusPainted(false);
+
+		JPanel accordionContent = new JPanel();
+		accordionContent.setLayout(new BoxLayout(accordionContent, BoxLayout.Y_AXIS));
+		accordionContent.add(new JLabel("Confidence: " + result.confidence));
+
+		// start hidden
+		accordionContent.setVisible(false);
+		accordionButton.addActionListener(e -> {
+				accordionContent.setVisible(!accordionContent.isVisible());
+				accordionButton.setText((accordionContent.isVisible() ? "▼ " : "► ") + result.string.value);
+				accordionPanel.revalidate();
+				accordionPanel.repaint();
+			});
+
+		// add to panel
+		accordionPanel.add(accordionButton);
+		accordionPanel.add(accordionContent);
+
+		// add panel to list
+		resultsPanel.add(accordionPanel);
+	}
 
     // public void sortStringResults() {
     //     List<String> strings = Collections.list(stringListModel.elements());
@@ -115,17 +136,18 @@ public class StringSniperComponentProvider extends ComponentProvider {
         stringsTable = new JTable(stringsTableModel);
 
         // Double-click handler: switch to Results tab
-        // stringList.addMouseListener(new MouseAdapter() {
-        //     @Override
-        //     public void mouseClicked(MouseEvent e) {
-        //         if (e.getClickCount() == 2) {
-        //             String selected = stringList.getSelectedValue();
-        //             if (selected != null) {
-        //                 showResultForString(selected);
-        //             }
-        //         }
-        //     }
-        // });
+		stringsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+				if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+					int row = stringsTable.rowAtPoint(e.getPoint());
+					if (row != -1) {
+						addResult(new ResultData(1.0f, new StringData((String)stringsTable.getValueAt(row, 0), null)));
+						tabbedPane.setSelectedIndex(1);
+					}
+				}
+            }
+		});
 
         JScrollPane scrollPane = new JScrollPane(stringsTable);
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
@@ -134,39 +156,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
         // ===== Results tab =====
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
-
-        // Accordion button visuals 
-        accordionButton = new JButton("▼ String Details");
-        accordionButton.setFocusPainted(false);
-        accordionButton.setHorizontalAlignment(SwingConstants.LEFT);
-        // Pressing it opens up the data
-        accordionButton.addActionListener(e -> toggleAccordion());
-
-        // Accordion content
-        // Can be adjusted if we want a different table model
-        // Sourcegraph results can go into field 1/2.  May need way to dynamically size based on results.
-        accordionContent = new JPanel(new BorderLayout());
-        String[] columnNames = {"String", "Memory Location", "Field 1", "Field 2"};
-        resultsTableModel = new DefaultTableModel(columnNames, 0);
-        resultsTable = new JTable(resultsTableModel);
-        accordionContent.add(new JScrollPane(resultsTable), BorderLayout.CENTER);
-        accordionContent.setVisible(true);
-
-        // Accordion panel
-        accordionPanel = new JPanel(new BorderLayout());
-        accordionPanel.add(accordionButton, BorderLayout.NORTH);
-        accordionPanel.add(accordionContent, BorderLayout.CENTER);
-
-        //Can manually add more panels later, this only makes one manually to display the basic info.
-        resultsPanel.add(accordionPanel);
         tabbedPane.addTab("Results", resultsPanel);
-    }
 
-    private void toggleAccordion() {
-        boolean visible = accordionContent.isVisible();
-        accordionContent.setVisible(!visible);
-        accordionButton.setText(visible ? "► String Details" : "▼ String Details");
-        resultsPanel.revalidate();
+		addResult(new ResultData(1.0f, new StringData("test", null)));
+		addResult(new ResultData(1.0f, new StringData("string2", null)));
+		addResult(new ResultData(1.0f, new StringData("lol", null)));
     }
 
     @Override
