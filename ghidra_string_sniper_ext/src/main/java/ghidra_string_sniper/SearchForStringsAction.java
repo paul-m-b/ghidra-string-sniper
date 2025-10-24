@@ -1,16 +1,20 @@
 package ghidra_string_sniper;
 
+import java.util.Arrays;
+import java.util.List;
+
+import docking.ActionContext;
+import docking.ComponentProvider;
 import docking.action.DockingAction;
 import docking.action.ToolBarData;
 import ghidra.app.services.ProgramManager;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Program;
 import ghidra.program.util.DefinedStringIterator;
-import docking.ActionContext;
-import docking.ComponentProvider;
+import ghidra.util.Msg;
 import resources.Icons;
-import ghidra.program.model.address.Address;
 
 public class SearchForStringsAction extends DockingAction {
     public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
@@ -41,6 +45,19 @@ public class SearchForStringsAction extends DockingAction {
                 }
             }
         }
+
+		// temp run python script
+		try {
+
+			// run in python and display stdout
+			List<String> args = Arrays.asList("arg1", "arg2");
+			PythonRunner.RunResult res = PythonRunner.runSystemPython(getClass(), "/python/test.py", args, 30); // 30s timeout
+			Msg.showInfo(getClass(), cp.getComponent(), "Output", res.stdout);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			Msg.showInfo(getClass(), cp.getComponent(), "AAHA", "Threw an error" + e.getMessage());
+		}
     }
     @Override
     public boolean isEnabledForContext(ActionContext context) {
