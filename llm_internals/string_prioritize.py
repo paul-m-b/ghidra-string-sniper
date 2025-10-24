@@ -42,18 +42,26 @@ class STRING_PRIORITIZE:
 
 
     '''
-    Calculate the combined entropy for each string and return its sorted form.
-    Strings with a combined entropy score less than threshold are removed.
+    Calculate the combined entropy score for a string
     '''
-    def get_entropy_list(self, string_list: list, threshold: float) -> list:
+    def get_entropy_score(self, string: str) -> float:
+        shannon = self.shannon_entropy(string) * 0.7
+        structural = (1 - self.structural_entropy(string)) * 0.3
+
+        score = shannon + structural
+
+        return score
+
+
+    '''
+    Returns string list sorted by the combined entropy score of each string
+    '''
+    def get_entropy_list(self, string_list: list) -> list:
         entropy_dict = {}
         for string in string_list:
-            shannon = self.shannon_entropy(string) * 0.7
-            structural = (1 - self.structural_entropy(string)) * 0.3
+            score = self.get_entropy_score(string)
 
-            score = shannon + structural
-            if score >= threshold:
-                    entropy_dict[string] = score
+            entropy_dict[string] = score
         sorted_strings = sorted(entropy_dict, key=entropy_dict.get, reverse=True)
 
         return sorted_strings
@@ -88,6 +96,7 @@ class STRING_PRIORITIZE:
 
     '''
     Returns true or false depending on whether or not a string should be removed depending on its catagory
+    Chat this *may* be a bad idea
     '''
     def string_properties(self, string: str, catagory: str) -> bool:
         threshold: int = 4
@@ -191,7 +200,7 @@ class STRING_PRIORITIZE:
         for string in string_list:
             for catagory, common_strings in comprehensive_list.items():
                 for common in common_strings:
-                    if (string in common.lower() and self.string_properties(string, catagory)):
+                    if (string.lower() in common.lower() and self.string_properties(string, catagory)):
                         try:
                             modified_strings.remove(string)
                         except:
@@ -216,7 +225,7 @@ class STRING_PRIORITIZE:
         string_list = stdout.split("\n")
 
         string_list = self.remove_common_strings(string_list)
-        string_list = self.get_entropy_list(string_list, 0.0)
+        string_list = self.get_entropy_list(string_list)
         string_list = string_list[:self.MAX_STRING_COUNT]
 
         return string_list
@@ -244,11 +253,18 @@ class STRING_PRIORITIZE:
         ]
 
         response = self.LLM.query_LLM(self.MODEL, messages, [])
+        content = response["choices"][0]["message"]["content"].split("\n")
+
+        output = {}
+        for string in content:
+            output[string[:-2]] = { "confidence" : int(string[-2:]), "entropy" : self.get_entropy_score(string[:-2]) }
+         
+        print (output)
+        with open('results.json', 'w') as f:
+            json.dump(output, f, indent=2)
 
         return response
 
 
 a = STRING_PRIORITIZE()
 b = a.prioritize_strings("./core_ets2mp.dll")
-print(b["choices"][0]["message"]["content"])
-

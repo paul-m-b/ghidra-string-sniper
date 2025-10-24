@@ -38,5 +38,5 @@ When strings seem equally useful:
 
 
 Output format
-	Return the strings and their usefulness. DO NOT PROVIDE ANY OTHER COMMENTARY.
+	Return the strings followed by a space and then their usefulness. DO NOT PROVIDE ANY OTHER COMMENTARY.
 
