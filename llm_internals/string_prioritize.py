@@ -61,6 +61,7 @@ class STRING_PRIORITIZE:
 
     '''
     Returns list of strings containing common opensource signatures.
+    Also removes the matched strings from the list.
     '''
     def get_opensource_strings(self, string_list: list) -> list:
         opensource_strings = {
@@ -78,13 +79,15 @@ class STRING_PRIORITIZE:
             for string in string_list:
                 for pattern in patterns:
                     if pattern.lower() in string.lower():
+                        string_list.remove(string)
                         matches.append(string)
                         break
 
         return matches
 
+
     '''
-    Returns true or false depending on whether or not a string should be removed depending 
+    Returns true or false depending on whether or not a string should be removed depending on its catagory
     '''
     def string_properties(self, string: str, catagory: str) -> bool:
         threshold: int = 4
@@ -107,11 +110,8 @@ class STRING_PRIORITIZE:
         if (len(string) <= threshold):
             return True
         
-        # Pure numeric
-        if string.isdigit() and len(string) > 6:
-            return True
-        
         return False
+
 
     '''
     Removes common strings that will typically show up in binaries.
@@ -233,7 +233,6 @@ class STRING_PRIORITIZE:
             raise e
 
 
-
     def prioritize_strings(self, binpath: str):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
         user_prompt = str(self.get_strings(binpath))
@@ -247,6 +246,7 @@ class STRING_PRIORITIZE:
         response = self.LLM.query_LLM(self.MODEL, messages, [])
 
         return response
+
 
 a = STRING_PRIORITIZE()
 b = a.prioritize_strings("./core_ets2mp.dll")
