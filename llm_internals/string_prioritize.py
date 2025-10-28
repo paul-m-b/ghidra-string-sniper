@@ -5,6 +5,7 @@ import logging
 import json
 import math
 import re
+import sys
 
 class STRING_PRIORITIZE:
     def __init__(self):
@@ -229,6 +230,20 @@ class STRING_PRIORITIZE:
         string_list = string_list[:self.MAX_STRING_COUNT]
 
         return string_list
+    
+    '''
+    Get strings from stdin, do non-LLM prioritization, then return a curated list of strings to pass to LLM
+    '''
+    def get_strings_stdin(self) -> list:
+        print("Enter strings:")
+        string_list = [line.rstrip() for line in sys.stdin]
+
+        string_list = self.remove_common_strings(string_list)
+        string_list = self.get_entropy_list(string_list)
+        string_list = string_list[:self.MAX_STRING_COUNT]
+
+        return string_list
+    
 
     '''
     Simply retrieve a text file's contents.
@@ -242,9 +257,9 @@ class STRING_PRIORITIZE:
             raise e
 
 
-    def prioritize_strings(self, binpath: str):
+    def prioritize_strings(self):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
-        user_prompt = str(self.get_strings(binpath))
+        user_prompt = str(self.get_strings_stdin())
         response_format = json.loads(self.get_prompt("cfg/strprioritize_response.json"))
 
         messages = [
@@ -260,6 +275,7 @@ class STRING_PRIORITIZE:
             output[string[:-2]] = { "confidence" : int(string[-2:]), "entropy" : self.get_entropy_score(string[:-2]) }
          
         print (output)
+        
         with open('results.json', 'w') as f:
             json.dump(output, f, indent=2)
 
@@ -267,4 +283,4 @@ class STRING_PRIORITIZE:
 
 
 a = STRING_PRIORITIZE()
-b = a.prioritize_strings("./core_ets2mp.dll")
+b = a.prioritize_strings()
