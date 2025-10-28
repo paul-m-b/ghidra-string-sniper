@@ -5,20 +5,20 @@ import docking.action.ToolBarData;
 import docking.ActionContext;
 import resources.Icons;
 
-public class SortStringsAction extends DockingAction {
+public class DeepResearchAction extends DockingAction {
 	private final StringSniperComponentProvider provider;
 
-	public SortStringsAction(StringSniperComponentProvider provider, String owner) {
-		super("Sort Strings by Length", owner);
+	public DeepResearchAction(StringSniperComponentProvider provider, String owner) {
+		super("Deep Research Action", owner);
 		this.provider = provider;
 
-		setToolBarData(new ToolBarData(Icons.SORT_ASCENDING_ICON));
-		setDescription("Sort strings by length (click again to toggle ascending/descending)");
+		setToolBarData(new ToolBarData(Icons.STRONG_WARNING_ICON));
+		setDescription("Click this button for Deep Research! Button still in development! DOES NOT WORK ATM!!!");
 	}
 
 	@Override
 	public void actionPerformed(ActionContext context) {
-		provider.sortStringResults();
+		//provider.DeepResearchAction();
 	}
 
 	@Override
