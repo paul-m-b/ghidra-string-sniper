@@ -2,40 +2,76 @@ package ghidra_string_sniper;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.nio.file.Paths;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.io.IOUtils;
-
 public class PythonRunner {
-	public static File getTempFileFromResource(Class yourClass, String resourcePath) throws IOException {
-		InputStream in = yourClass.getResourceAsStream(resourcePath);
-		File tempFile = File.createTempFile("ghidra-resource-", "-" + Paths.get(resourcePath).getFileName());
-		tempFile.deleteOnExit();
-		try(OutputStream outputStream = new FileOutputStream(tempFile)){
-			IOUtils.copy(in, outputStream);
+	public static Path getTempDirFromResourceDir(Class yourClass, String resourceDir) throws IOException {
+		// TODO - calculate files inside of resourceDir
+		String[] files = {
+			"TOKEN",
+			"string_prioritize.py",
+			"requirements.txt",
+			"llm_interact.py",
+			"function_match.py",
+			"cfg/strprioritize_response.json",
+			"cfg/strprioritize_system.txt"
+		};
+
+		// ensure resourceDir ends with a slash so concatenation is safe
+		if (!resourceDir.endsWith("/")) {
+			resourceDir = resourceDir + "/";
 		}
 
-		return tempFile;
+		Path tempDirectory = Files.createTempDirectory("ghidra-sniper-python-script-");
+
+		for (String name : files) {
+			// Resolve file path inside the temp directory, creating parent directories if needed
+			Path dest = tempDirectory.resolve(name);
+			File destFile = dest.toFile();
+			File parent = destFile.getParentFile();
+			if (parent != null && !parent.exists()) {
+				if (!parent.mkdirs()) {
+					throw new IOException("Failed to create parent directories for " + dest);
+				}
+			}
+
+			// Load resource from classpath
+			try (InputStream in = yourClass.getResourceAsStream(resourceDir + name)) {
+				if (in == null) {
+					throw new FileNotFoundException("Resource not found: " + resourceDir + name);
+				}
+				// Copy to destination (overwrites if somehow present)
+				Files.copy(in, dest, StandardCopyOption.REPLACE_EXISTING);
+			}
+		}
+
+		return tempDirectory;
 	}
 
-    public static RunResult runSystemPython(Class myClass, String scriptResource, List<String> args, long timeoutSeconds) throws IOException, InterruptedException {
+    public static RunResult runSystemPython(Class myClass, String scriptDir, String scriptName, List<String> args, long timeoutSeconds) throws IOException, InterruptedException {
+		// copy python scripts from directory to temp dir
+		Path tempDir = getTempDirFromResourceDir(myClass, scriptDir);
+
+		// build command to run
         String os = System.getProperty("os.name").toLowerCase();
         String pythonCmd = os.contains("win") ? "python" : "python3";
         List<String> cmd = new ArrayList<>();
         cmd.add(pythonCmd);
-        cmd.add(getTempFileFromResource(myClass, scriptResource).getPath());
+        cmd.add(tempDir.resolve(scriptName).toString());
         if (args != null) cmd.addAll(args);
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true); // merge stderr -> stdout
+		pb.directory(new File(tempDir.toString()));
 
         Process p;
         try {
