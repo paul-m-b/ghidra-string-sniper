@@ -13,12 +13,20 @@ Also calls get_readme if 4th argument is true.
 """
 def get_repos(input_file_name: str, operator: str, match_count: str, find_readme: str) -> set():
     with open(input_file_name, 'r') as file:
-        query: str = file.read()
+        search_terms = []
+        for line in file:
+            stripped_line = line.strip()
+            if stripped_line:  # Only include non-empty lines
+                # Escape any quotes in the search term
+                escaped_term = stripped_line.replace('"', '\\"')
+                search_terms.append(f'{escaped_term}')
 
-    if (operator.lower() == "and"):
-        query = query.replace(' ', ' AND ')
-    if (operator.lower() == "or"):
-        query = query.replace(' ', ' OR ')
+            if operator.lower() == "and":
+                query = " AND ".join(search_terms)
+            elif operator.lower() == "or":
+                query = " OR ".join(search_terms)
+            else:
+                query = " ".join(search_terms)
 
 
     query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
