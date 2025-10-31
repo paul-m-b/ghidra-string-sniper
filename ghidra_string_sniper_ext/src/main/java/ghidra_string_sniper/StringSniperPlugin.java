@@ -5,6 +5,7 @@ import ghidra.app.plugin.ProgramPlugin;
 import ghidra.framework.plugintool.*;
 import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.model.listing.Program;
 
 //@formatter:off
 // metadata
@@ -19,13 +20,29 @@ import ghidra.framework.plugintool.PluginTool;
 // plugin class
 public class StringSniperPlugin extends ProgramPlugin {
 	StringSniperComponentProvider provider;
-
+	
 	public StringSniperPlugin(PluginTool tool) {
 		super(tool);
 
 		// set up component provider
-		provider = new StringSniperComponentProvider(tool, getName());
+		provider = new StringSniperComponentProvider(this, tool, getName());
 		provider.addToTool();
+	}
+
+	@Override
+	protected void programActivated(Program activatedProgram) {
+		super.programActivated(activatedProgram);
+		if (provider != null) {
+			provider.setProgram(activatedProgram);
+		}
+	}
+
+	@Override
+	protected void programDeactivated(Program deactivatedProgram) {
+		super.programDeactivated(deactivatedProgram);
+		if (provider != null) {
+			provider.setProgram(null);
+		}
 	}
 }
 

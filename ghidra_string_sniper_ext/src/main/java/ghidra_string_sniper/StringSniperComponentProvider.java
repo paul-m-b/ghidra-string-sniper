@@ -9,8 +9,18 @@ import java.util.List;
 import docking.ComponentProvider;
 import ghidra.framework.plugintool.PluginTool;
 import resources.Icons;
+import java.net.URI;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressFactory;
+import ghidra.program.model.listing.Program;
+import ghidra.app.services.GoToService;
+import ghidra.util.Msg;
+
 
 public class StringSniperComponentProvider extends ComponentProvider {
+    // Ghidra data
+    private Program currentProgram;
+    private StringSniperPlugin plugin;
 
     // Data
     private StringTableModel stringsTableModel;
@@ -23,9 +33,9 @@ public class StringSniperComponentProvider extends ComponentProvider {
     // Stores the latest result panel accordian tab
     private JPanel currentResultPanel;
 
-    public StringSniperComponentProvider(PluginTool tool, String owner) {
+    public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
-
+        this.plugin = plugin; 
         buildPanel();
 
         setTitle("String Sniper");
@@ -38,13 +48,17 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         addLocalAction(new SearchForStringsAction(this, owner));
         addLocalAction(new SortStringsAction(this, owner));
-        //New actions
+        //New actions, needs to be properly implemented.  Attach to python script 
         addLocalAction(new DeepResearchAction(this,owner));
     }
 
-    // === StringData Management
     public void clearStrings() {
         stringsTableModel.clear();
+    }
+
+    // Sets the current program so that Ghidra can go to it for addresses when navigating.
+    public void setProgram(Program program) {
+        this.currentProgram = program;
     }
 
     public void addString(StringData string) {
@@ -52,6 +66,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     public void addResult(ResultData result) {
+        // Can be implemented later.  Purpose is to remove old results for only the current one to appear.
+        //resultsPanel.removeALL();
         JPanel accordionPanel = new JPanel();
         accordionPanel.setLayout(new BoxLayout(accordionPanel, BoxLayout.Y_AXIS));
 
@@ -61,7 +77,40 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         JPanel accordionContent = new JPanel();
         accordionContent.setLayout(new BoxLayout(accordionContent, BoxLayout.Y_AXIS));
-        accordionContent.add(new JLabel("Confidence: " + result.confidence));
+
+        // Colors text based on how confident it's related to the repository 
+        // (I'm assuming we'll implrement a way to make it score out of 10)
+        JLabel confidenceScore = new JLabel("Confidence: " + result.confidence + "/10");
+        if(result.confidence >= 7.5){
+            confidenceScore.setForeground(Color.GREEN);
+        } else if(result.confidence >= 3.5){
+            confidenceScore.setForeground(Color.BLUE);
+        }else{
+            confidenceScore.setForeground(Color.RED);
+        }
+        accordionContent.add(confidenceScore);
+
+
+        
+        // Can be changed later, this adds a hyperlink that a user can click to visit the repo URL
+        JLabel repositoryText = new JLabel("URL of repository where code appears: " + "Visit Website");
+        repositoryText.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        repositoryText.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e){
+                try{
+                    Desktop.getDesktop().browse(new
+                    URI("https://www.google.com"));
+                } catch (Exception ex){
+                    ex.printStackTrace();
+                }
+            } 
+        });
+        accordionContent.add(repositoryText);    
+        
+        
+        accordionContent.add(new JLabel("LLM Assessment : " + "Testing"));
+        
 
         accordionContent.setVisible(false);
         accordionButton.addActionListener(e -> {
@@ -154,15 +203,30 @@ public class StringSniperComponentProvider extends ComponentProvider {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
                     int row = stringsTable.rowAtPoint(e.getPoint());
+                    int col = stringsTable.columnAtPoint(e.getPoint());
                     if (row != -1) {
-                        addResult(new ResultData(1.0f,
-                                new StringData((String) stringsTable.getValueAt(row, 0), null)));
-                        tabbedPane.setSelectedIndex(1);
+                        if (col == 1) {
+                            // Double clicking the Address column takes you to the section in ghidra as if you went Navigation, Go to, manually enter adress
+                            Object addressValue = stringsTable.getValueAt(row, 1);
+                            if (addressValue != null && !"N/A".equals(addressValue)) {
+                                navigateToAddress(addressValue.toString());
+                            } else {
+                                JOptionPane.showMessageDialog(stringsTable, 
+                                    // Have not tested this fail case so may not work.  Needs testing.
+                                    "No valid address for this string.", 
+                                    "Invalid Address", JOptionPane.WARNING_MESSAGE);
+                            }
+                        } else {
+                            // Double clicking works as normal for the strings column 
+                            addResult(new ResultData(1.0f,
+                                    new StringData((String) stringsTable.getValueAt(row, 0), null)));
+                            tabbedPane.setSelectedIndex(1);
+                        }
                     }
                 }
             }
         });
-
+     
         JScrollPane scrollPane = new JScrollPane(stringsTable);
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
         tabbedPane.add("Strings", stringsPanel);
@@ -183,6 +247,9 @@ public class StringSniperComponentProvider extends ComponentProvider {
         return tabbedPane;
     }
 
+
+
+    
     // === Table model
     public class StringTableModel extends AbstractTableModel {
         List<StringData> stringData = new ArrayList<>();
@@ -260,7 +327,37 @@ public class StringSniperComponentProvider extends ComponentProvider {
                 fireTableRowsDeleted(row, row);
             }
         }
+
+
+        
         
 
     }
+
+    // For double clicking adress to navigate inside of ghidra to the address.
+    private void navigateToAddress(String addressString) {
+        if (currentProgram == null) {
+            Msg.showError(this, null, "Navigation Error", "No program is currently open.");
+            return;
+        }
+
+        GoToService goToService = getTool().getService(GoToService.class);
+        if (goToService == null) {
+            Msg.showError(this, null, "Navigation Error", "GoToService not found.");
+            return;
+        }
+
+        try {
+            Address address = currentProgram.getAddressFactory().getAddress(addressString);
+            if (address != null) {
+                goToService.goTo(address, currentProgram);
+            } else {
+                Msg.showWarn(this, null, "Invalid Address", "Could not resolve address: " + addressString);
+            }
+        } catch (Exception e) {
+            Msg.showError(this, null, "Navigation Error", "Failed to navigate to address: " + e.getMessage(), e);
+        }
+    }
+
+
 }
