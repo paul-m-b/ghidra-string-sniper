@@ -17,6 +17,7 @@ import ghidra.app.services.GoToService;
 import ghidra.util.Msg;
 
 
+
 public class StringSniperComponentProvider extends ComponentProvider {
     // Ghidra data
     private Program currentProgram;
@@ -24,7 +25,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
     // Data
     private StringTableModel stringsTableModel;
-    private boolean sortAscending = true;
 
     // UI
     private JTabbedPane tabbedPane;
@@ -48,8 +48,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         addLocalAction(new SearchForStringsAction(this, owner));
         addLocalAction(new SortStringsAction(this, owner));
-        //New actions, needs to be properly implemented.  Attach to python script 
         addLocalAction(new DeepResearchAction(this,owner));
+        addLocalAction(new HelpAction(this,owner));
     }
 
     public void clearStrings() {
@@ -63,6 +63,13 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
     public void addString(StringData string) {
         stringsTableModel.add(string);
+    }
+    
+    public StringTableModel getStringTableModel(){
+        return stringsTableModel;
+    }
+    public List<StringData> getStringData() {
+        return stringsTableModel.getStringData();
     }
 
     public void addResult(ResultData result) {
@@ -123,22 +130,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         accordionPanel.add(accordionButton);
         accordionPanel.add(accordionContent);
         resultsPanel.add(accordionPanel);
-    }
-
-    // === Sorting (restored)
-    public void sortStringResults() {
-        List<StringData> strings = new ArrayList<>(stringsTableModel.stringData);
-        if (sortAscending) {
-            strings.sort(Comparator.comparingInt(s -> s.value.length()));
-        } else {
-            strings.sort(Comparator.comparingInt((StringData s) -> s.value.length()).reversed());
-        }
-
-        stringsTableModel.stringData.clear();
-        stringsTableModel.stringData.addAll(strings);
-        stringsTableModel.fireTableDataChanged();
-
-        sortAscending = !sortAscending;
     }
 
     // === Filtering (restored)
@@ -254,6 +245,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
     public class StringTableModel extends AbstractTableModel {
         List<StringData> stringData = new ArrayList<>();
         private List<StringData> allData = new ArrayList<>();
+
+
+        public List<StringData> getStringData(){
+            return stringData;
+        }
 
         @Override
         public int getRowCount() {
