@@ -50,9 +50,9 @@ public class SearchForStringsAction extends DockingAction {
 		try {
 
 			// run in python and display stdout
-			// List<String> args = Arrays.asList("arg1", "arg2");
-			// PythonRunner.RunResult res = PythonRunner.runSystemPython(getClass(), "/python/", "string_prioritize.py", args, 30); // 30s timeout
-			// Msg.showInfo(getClass(), cp.getComponent(), "Output", res.stdout);
+			List<String> args = Arrays.asList("arg1", "arg2");
+			PythonRunner.RunResult res = PythonRunner.runSystemPython("python/", "string_prioritize.py", args, 30); // 30s timeout
+			Msg.showInfo(getClass(), cp.getComponent(), "Output", res.stdout);
 
 		} catch (Exception e) {
 			e.printStackTrace();
