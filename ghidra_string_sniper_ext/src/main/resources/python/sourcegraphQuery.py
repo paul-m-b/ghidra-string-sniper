@@ -83,20 +83,26 @@ def get_repos(input_file_name: str, operator: str, match_count: str, find_readme
                 matched_file: str = match['file']['name'].split('.')[0]
                 repo_name: str = match['repository']['name'].split('/')[-1]
                 file_name: str = repo_name + '_' + matched_file + '.txt'
+                folder_name: str = query.encode("utf-8")
+                md5_hash = hashlib.md5()
+                md5_hash.update(folder_name)
+                folder_name: str = str(md5_hash.hexdigest())
 
                 match_msg: str = ""
                 for num in matched_lines:
                     match_msg += str(num+6) + " "
 
-                os.makedirs("GSS_results/", exist_ok=True)
+                os.makedirs(f"GSS_results/{folder_name}/", exist_ok=True)
 
-                with open("GSS_results/"+file_name, 'w') as file:
+                with open(f"GSS_results/{folder_name}/"+file_name, 'w') as file:
                     file.write("-----------GSS-----------\n" + "query: " + query + "\n" + match_msg + "\n-------------------------\n\n" + match['file']['content'])
 
 
                 # Now find the readme if specified:
+                '''
                 if (find_readme == 'true'):
                     get_readme(match['repository']['name'])
+                '''
 
         print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")
         

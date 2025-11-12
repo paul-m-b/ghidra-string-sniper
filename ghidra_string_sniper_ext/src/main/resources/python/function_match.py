@@ -1,5 +1,8 @@
 from llm_interact import LLM_INTERACT
 import logging
+import os
+import json
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,7 +75,39 @@ class FUNCTION_MATCH:
 
         return [match_func_path, max_rating]
 
+    '''
+    Iterate thruogh GSS_Results and get function match results for each.
+    Each folder contains open source code related to a particular string.
+    '''
+    def iterate_through_results(self):
+        out_dict = {}
+        root = Path("./GSS_results")
+        for dirpath, dirnames, filenames in os.walk(root):
+            for ind, fname in enumerate(filenames):
+                if (dirpath == "GSS_results"):
+                    break 
+
+                filenames[ind] = dirpath+"/"+fname
+                directory = dirpath.split("/")[1]
+
+                #TODO: retrieve decomp path
+                #this is the decomp in which the string appears in the disassembly.
+                decomp_path = "PLACEHOLDER"
+
+                match_results = self.find_matching_func(decomp_path, filenames)
+
+                out_dict[directory] = match_results
+        
+        with open("./GSS_results/MATCHES.json", "w") as f:
+            json.dump(out_dict, f, indent=4)
+
+
+
+
+
+
 
 a = FUNCTION_MATCH()
-b = a.find_matching_func("test_materials/C-Web-Server/test_server_decomp.txt", ["test_materials/C-Web-Server/test_server_source.txt","test_materials/C-Web-Server/test_server_actual_source.txt","test_materials/useless_func.txt"])
-print(b)
+#b = a.find_matching_func("test_materials/C-Web-Server/test_server_decomp.txt", ["test_materials/C-Web-Server/test_server_source.txt","test_materials/C-Web-Server/test_server_actual_source.txt","test_materials/useless_func.txt"])
+
+a.iterate_through_results()
