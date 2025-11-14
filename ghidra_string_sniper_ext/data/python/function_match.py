@@ -17,7 +17,8 @@ class FUNCTION_MATCH:
                 return f.read()
         except Exception as e:
             logging.critical(f"Error opening `{path}`.")
-            raise e
+            #raise e
+            return ""
 
     '''
     Return a float value out of 10 representing the similarity between the 
@@ -43,7 +44,7 @@ class FUNCTION_MATCH:
             rating = float(rating)
         except Exception as e:
             logging.critical(f"LLM returned unexpected value for {decomp_func_path} vs. {source_func_path}.")
-            raise e
+            rating = 0
 
         return rating
 

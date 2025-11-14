@@ -5,15 +5,14 @@ import time
 import sys
 import os
 
-#TODO: change the main functionality to read from results.json and do the searches.
-
 
 """
 Queries sourcegraph for public repositories containing strings in specified input file, creates folder named GSS_results
 containing the returned file contents from sourcegraph with a small header containing the line number of the matches.
 Also calls get_readme if 4th argument is true.
 """
-def get_repos(input_file_name: str, operator: str, match_count: str, find_readme: str) -> set():
+def get_repos(query: str, match_count: str, query_hash: str) -> set():
+    """
     with open(input_file_name, 'r') as file:
         search_terms = []
         for line in file:
@@ -29,8 +28,10 @@ def get_repos(input_file_name: str, operator: str, match_count: str, find_readme
                 query = " OR ".join(search_terms)
             else:
                 query = " ".join(search_terms)
+    """
 
 
+    query = query.replace('"','\\"')
     query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
 
     url: str = "https://sourcegraph.com/.api/graphql"
@@ -85,10 +86,13 @@ def get_repos(input_file_name: str, operator: str, match_count: str, find_readme
                 matched_file: str = match['file']['name'].split('.')[0]
                 repo_name: str = match['repository']['name'].split('/')[-1]
                 file_name: str = repo_name + '_' + matched_file + '.txt'
+                '''
                 folder_name: str = query.encode("utf-8")
                 md5_hash = hashlib.md5()
                 md5_hash.update(folder_name)
                 folder_name: str = str(md5_hash.hexdigest())
+                '''
+                folder_name = query_hash
 
                 match_msg: str = ""
                 for num in matched_lines:
@@ -165,10 +169,14 @@ def get_readme(repo_url: str):
         print(f"Error: {e}")
         return
 
+def iterate_search_strings():
+    with open("./results.json") as file:
+        useful_strings = json.load(file)
 
-# Examples: python3 sourcegraphQuery.py input.txt AND ALL true
-#           python3 sourcegraphQuery.py input.txt OR 125 false
+    for string in useful_strings.keys():
+        get_repos(string, 10, useful_strings[string]["hash"])
 
-repos: set() = get_repos(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
-for repo in repos:
-    print (f"   - {repo}")
+
+
+iterate_search_strings()
+

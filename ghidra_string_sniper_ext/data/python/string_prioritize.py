@@ -12,7 +12,7 @@ import os
 
 import pyghidra
 
-logging.basicConfig()
+logging.basicConfig(level=logging.INFO)
 
 class STRING_PRIORITIZE:
     def __init__(self):
@@ -279,9 +279,14 @@ class STRING_PRIORITIZE:
 
         output = {}
         for string in content:
+            folder_name = string.encode("utf-8")
+            md5_hash = hashlib.md5()
+            md5_hash.update(folder_name)
+            folder_name = str(md5_hash.hexdigest())
             output[string[:-2]] = {
                     "confidence" : int(string[-2:]),
-                    "entropy" : self.get_entropy_score(string[:-2])
+                    "entropy" : self.get_entropy_score(string[:-2]),
+                    "hash": folder_name
             }
          
         with open('results.json', 'w') as f:
@@ -375,4 +380,4 @@ class STRING_PRIORITIZE:
 
 
 a = STRING_PRIORITIZE()
-print(a.get_ghidra_strings("./server"))
+a.prioritize_strings("./server")
