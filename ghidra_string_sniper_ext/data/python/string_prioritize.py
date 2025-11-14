@@ -1,12 +1,16 @@
 from llm_interact import LLM_INTERACT
 from collections import Counter
+from pathlib import Path
 import subprocess
 import logging
 import json
 import math
 import re
 import sys
-import pyhidra
+import hashlib
+import os
+
+import pyghidra
 
 class STRING_PRIORITIZE:
     def __init__(self):
@@ -258,9 +262,9 @@ class STRING_PRIORITIZE:
             raise e
 
 
-    def prioritize_strings(self):
+    def prioritize_strings(self, binpath: str):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
-        user_prompt = str(self.get_strings_stdin())
+        user_prompt = str(self.get_ghidra_strings(binpath))
         response_format = json.loads(self.get_prompt("cfg/strprioritize_response.json"))
 
         messages = [
@@ -273,43 +277,108 @@ class STRING_PRIORITIZE:
 
         output = {}
         for string in content:
-            output[string[:-2]] = { "confidence" : int(string[-2:]), "entropy" : self.get_entropy_score(string[:-2]) }
+            output[string[:-2]] = {
+                    "confidence" : int(string[-2:]),
+                    "entropy" : self.get_entropy_score(string[:-2])
+            }
          
-        print (output)
+        print(output)
         
         with open('results.json', 'w') as f:
             json.dump(output, f, indent=2)
 
         return response
 
-    def _get_strings_via_pyhidra(self, binpath: str) -> list[str]:
-        """
-        Preferred: open program in-process via pyhidra and enumerate defined string data.
-        """
-        # Start Ghidra env once; safe to call multiple times
-        pyhidra.start()
+    '''
+    Get strings using Pyghidra API.
+    Also, run non-LLM heuristics on the strings.
+    Once strings are ordered by said heuristics, extract decompiled code from Ghidra for each string
+    '''
+    def get_ghidra_strings(self, binary_path):
+        logging.info("Loading binary into ghidra..")
+        with pyghidra.open_program(binary_path, analyze=True) as flat_api:
+            from ghidra.app.decompiler import DecompInterface
+            from ghidra.util.task import ConsoleTaskMonitor
 
-        # Open the program; yields a FlatProgramAPI ("flat")
-        with pyhidra.open_program(binpath, project_location="/tmp/pyhidra_proj", project_name="strings_proj") as flat:
-            program = flat.getCurrentProgram() if hasattr(flat, "getCurrentProgram") else flat.program
-            listing = program.getListing()
-            data_iter = listing.getDefinedData(True)
+            program = flat_api.getCurrentProgram()
 
-            strings = []
-            while data_iter.hasNext():
-                data = data_iter.next()
-                dt_name = data.getDataType().getName().lower()
-                # Cover ASCII/UTF-16 strings Ghidra defines (e.g., "string", "unicode", "utf16")
-                if "string" in dt_name or "unicode" in dt_name or "utf" in dt_name:
-                    try:
-                        val = data.getValue()
-                        s = str(val) if val is not None else data.getDefaultValueRepresentation()
-                        strings.append(s)
-                    except Exception:
-                        # Some datatypes may not convert cleanly; skip
+            logging.info(f"Analyzing: {program.getName()}")
+            logging.info(f"Language: {program.getLanguageID()}")
+
+            logging.info(f"Getting all strings...")
+
+            string_mgr = program.getListing().getDefinedData(True)
+            string_count = 0
+
+            string_list = []
+            string_addrs = {}
+            for data in string_mgr:
+                if not data.hasStringValue():
+                    continue
+                addr = data.getAddress()
+                string_val = data.getValue()
+                string_addr = data.getAddress()
+
+                string_list.append(string_val)
+                string_addrs[string_val] = string_addr
+
+            logging.info("Running non-LLM heuristics...")
+
+            string_list = self.remove_common_strings(string_list)
+            string_list = self.get_entropy_list(string_list)
+            string_list = string_list[:self.MAX_STRING_COUNT]
+
+            #get decomp for all the prioritized strings
+
+            logging.info("Getting decomp for non-LLM ordered strings...")
+
+            for string in string_list:
+                str_addr = string_addrs[string]
+                references = flat_api.getReferencesTo(str_addr)
+
+                decompiler = DecompInterface()
+                decompiler.openProgram(program)
+
+                seen_functions = set()
+
+                for ref in references:
+                    from_addr = ref.getFromAddress()
+                    function = flat_api.getFunctionContaining(from_addr)
+                    
+                    if (not function or function in seen_functions):
                         continue
-        print(strings)
+
+                    seen_functions.add(function)
+
+                    logging.info(f"Found function: {function.getName()}")
+                    logging.info(f"Decompiling {function.getName()}...")
+
+                    result = decompiler.decompileFunction(function, 30, ConsoleTaskMonitor())
+
+                    if result.decompileCompleted():
+                        decomp_code = result.getDecompiledFunction().getC()
+
+                        folder_name = string.encode("utf-8")
+                        md5_hash = hashlib.md5()
+                        md5_hash.update(folder_name)
+                        folder_name = str(md5_hash.hexdigest())
+
+                        md5_hash.update(function.getName().encode("utf-8"))
+                        file_name = str(md5_hash.hexdigest())
+
+                        os.makedirs(f"GSS_decomps/{folder_name}/", exist_ok=True)
+
+                        with open(f"GSS_decomps/{folder_name}/{file_name}", "w") as file:
+                            file.write(decomp_code)
+
+
+                    else:
+                        logging.info(f"Decomp failed for {function.getName()}")
+
+            return string_list
+
+
 
 
 a = STRING_PRIORITIZE()
-b = a._get_strings_via_pyhidra("/home/paul/gss/ghidra-string-sniper/ghidra_string_sniper_ext/data/python/test.o")
+print(a.get_ghidra_strings("./test.o"))
