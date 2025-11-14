@@ -6,6 +6,7 @@ import json
 import math
 import re
 import sys
+import pyhidra
 
 class STRING_PRIORITIZE:
     def __init__(self):
@@ -281,6 +282,34 @@ class STRING_PRIORITIZE:
 
         return response
 
+    def _get_strings_via_pyhidra(self, binpath: str) -> list[str]:
+        """
+        Preferred: open program in-process via pyhidra and enumerate defined string data.
+        """
+        # Start Ghidra env once; safe to call multiple times
+        pyhidra.start()
+
+        # Open the program; yields a FlatProgramAPI ("flat")
+        with pyhidra.open_program(binpath, project_location="/tmp/pyhidra_proj", project_name="strings_proj") as flat:
+            program = flat.getCurrentProgram() if hasattr(flat, "getCurrentProgram") else flat.program
+            listing = program.getListing()
+            data_iter = listing.getDefinedData(True)
+
+            strings = []
+            while data_iter.hasNext():
+                data = data_iter.next()
+                dt_name = data.getDataType().getName().lower()
+                # Cover ASCII/UTF-16 strings Ghidra defines (e.g., "string", "unicode", "utf16")
+                if "string" in dt_name or "unicode" in dt_name or "utf" in dt_name:
+                    try:
+                        val = data.getValue()
+                        s = str(val) if val is not None else data.getDefaultValueRepresentation()
+                        strings.append(s)
+                    except Exception:
+                        # Some datatypes may not convert cleanly; skip
+                        continue
+        print(strings)
+
 
 a = STRING_PRIORITIZE()
-b = a.prioritize_strings()
+b = a._get_strings_via_pyhidra("/home/paul/gss/ghidra-string-sniper/ghidra_string_sniper_ext/data/python/test.o")
