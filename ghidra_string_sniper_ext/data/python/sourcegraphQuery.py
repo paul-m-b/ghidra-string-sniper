@@ -5,6 +5,8 @@ import time
 import sys
 import os
 
+#TODO: change the main functionality to read from results.json and do the searches.
+
 
 """
 Queries sourcegraph for public repositories containing strings in specified input file, creates folder named GSS_results
