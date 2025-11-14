@@ -12,6 +12,8 @@ import os
 
 import pyghidra
 
+logging.basicConfig()
+
 class STRING_PRIORITIZE:
     def __init__(self):
         self.MODEL = "openai/gpt-oss-20b:free"
@@ -282,8 +284,6 @@ class STRING_PRIORITIZE:
                     "entropy" : self.get_entropy_score(string[:-2])
             }
          
-        print(output)
-        
         with open('results.json', 'w') as f:
             json.dump(output, f, indent=2)
 
@@ -341,6 +341,7 @@ class STRING_PRIORITIZE:
 
                 seen_functions = set()
 
+                all_decomp = ""
                 for ref in references:
                     from_addr = ref.getFromAddress()
                     function = flat_api.getFunctionContaining(from_addr)
@@ -357,28 +358,21 @@ class STRING_PRIORITIZE:
 
                     if result.decompileCompleted():
                         decomp_code = result.getDecompiledFunction().getC()
-
-                        folder_name = string.encode("utf-8")
-                        md5_hash = hashlib.md5()
-                        md5_hash.update(folder_name)
-                        folder_name = str(md5_hash.hexdigest())
-
-                        md5_hash.update(function.getName().encode("utf-8"))
-                        file_name = str(md5_hash.hexdigest())
-
-                        os.makedirs(f"GSS_decomps/{folder_name}/", exist_ok=True)
-
-                        with open(f"GSS_decomps/{folder_name}/{file_name}", "w") as file:
-                            file.write(decomp_code)
-
-
+                        all_decomp += f"{decomp_code}\n\n"
                     else:
                         logging.info(f"Decomp failed for {function.getName()}")
+
+                folder_name = string.encode("utf-8")
+                md5_hash = hashlib.md5()
+                md5_hash.update(folder_name)
+                folder_name = str(md5_hash.hexdigest())
+                os.makedirs(f"GSS_decomps/{folder_name}/", exist_ok=True)
+                with open(f"GSS_decomps/{folder_name}/decomp.txt", "w") as file:
+                    file.write(all_decomp)
 
             return string_list
 
 
 
-
 a = STRING_PRIORITIZE()
-print(a.get_ghidra_strings("./test.o"))
+print(a.get_ghidra_strings("./server"))

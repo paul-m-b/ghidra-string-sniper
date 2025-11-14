@@ -37,12 +37,12 @@ class FUNCTION_MATCH:
 
         response = self.LLM.query_LLM(self.MODEL, messages)
 
-        rating = response["choices"][0]["message"]["content"]
 
         try:
+            rating = response["choices"][0]["message"]["content"]
             rating = float(rating)
         except Exception as e:
-            logging.critical(f"LLM returned non-float value for {decomp_func_path} vs. {source_func_path}.")
+            logging.critical(f"LLM returned unexpected value for {decomp_func_path} vs. {source_func_path}.")
             raise e
 
         return rating
@@ -83,20 +83,16 @@ class FUNCTION_MATCH:
         out_dict = {}
         root = Path("./GSS_results")
         for dirpath, dirnames, filenames in os.walk(root):
+            if (dirpath == "GSS_results"):
+                continue
             for ind, fname in enumerate(filenames):
-                if (dirpath == "GSS_results"):
-                    break 
-
                 filenames[ind] = dirpath+"/"+fname
-                directory = dirpath.split("/")[1]
 
-                #TODO: retrieve decomp path
-                #this is the decomp in which the string appears in the disassembly.
-                decomp_path = "PLACEHOLDER"
+            directory = dirpath.split("/")[1]
+            decomp_path = f"GSS_decomps/{directory}/decomp.txt"
 
-                match_results = self.find_matching_func(decomp_path, filenames)
-
-                out_dict[directory] = match_results
+            match_results = self.find_matching_func(decomp_path, filenames)
+            out_dict[directory] = match_results
         
         with open("./GSS_results/MATCHES.json", "w") as f:
             json.dump(out_dict, f, indent=4)
