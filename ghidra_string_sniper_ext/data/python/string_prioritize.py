@@ -18,7 +18,7 @@ class STRING_PRIORITIZE:
     def __init__(self):
         self.MODEL = "openai/gpt-oss-20b:free"
         self.LLM = LLM_INTERACT()
-        self.MAX_STRING_COUNT = 50
+        self.MAX_STRING_COUNT = 10
 
     '''
     Calculate the shannon entropy for a particular string.
@@ -279,7 +279,14 @@ class STRING_PRIORITIZE:
 
         output = {}
         for string in content:
-            folder_name = string.encode("utf-8")
+            '''
+            TODO: fix this. unfortunately the LLM will sometimes make minor changes to strings.
+                because we use hashes need to make sure that the strings are the same between folder
+                creation and when they're added into the results.json file
+            '''
+            actual_string = string[:-2]
+            folder_name = actual_string.encode("utf-8").strip()
+            logging.info(folder_name)
             md5_hash = hashlib.md5()
             md5_hash.update(folder_name)
             folder_name = str(md5_hash.hexdigest())
@@ -368,6 +375,7 @@ class STRING_PRIORITIZE:
                         logging.info(f"Decomp failed for {function.getName()}")
 
                 folder_name = string.encode("utf-8")
+                logging.info(folder_name)
                 md5_hash = hashlib.md5()
                 md5_hash.update(folder_name)
                 folder_name = str(md5_hash.hexdigest())

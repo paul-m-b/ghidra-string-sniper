@@ -2,13 +2,14 @@ from llm_interact import LLM_INTERACT
 import logging
 import os
 import json
+import time
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 
 class FUNCTION_MATCH:
     def __init__(self):
-        self.MODEL = "openai/gpt-oss-20b:free"
+        self.MODEL= "openai/gpt-oss-20b:free"
         self.LLM = LLM_INTERACT()
 
     def open_file(self, path: str, mode: str) -> str:
@@ -18,7 +19,7 @@ class FUNCTION_MATCH:
         except Exception as e:
             logging.critical(f"Error opening `{path}`.")
             #raise e
-            return ""
+            return "NO FILE CONTENT REPORTED. ASSUME NO CODE AND RETURN RATING OF 0."
 
     '''
     Return a float value out of 10 representing the similarity between the 
@@ -44,7 +45,15 @@ class FUNCTION_MATCH:
             rating = float(rating)
         except Exception as e:
             logging.critical(f"LLM returned unexpected value for {decomp_func_path} vs. {source_func_path}.")
-            rating = 0
+
+            if ("rate-limit" in response):
+                logging.info("Being rate limited. Trying again in 2 seconds.")
+                time.sleep(2)
+                self.compare_funcs(decomp_func_path, source_func_path)
+            else:
+                logging.critical("Unkown error. Rating set to 0")
+                logging.critical(response)
+                rating = 0
 
         return rating
 

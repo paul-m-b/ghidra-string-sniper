@@ -174,7 +174,7 @@ def iterate_search_strings():
         useful_strings = json.load(file)
 
     for string in useful_strings.keys():
-        get_repos(string, 10, useful_strings[string]["hash"])
+        get_repos(string, 5, useful_strings[string]["hash"])
 
 
 

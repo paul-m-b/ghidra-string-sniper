@@ -32,6 +32,8 @@ Output requirement:
 
 Return only a single numeric likeness score from 0 to 10 (decimals allowed), where 10 = perfect/near-perfect match and 0 = not related at all. Do not return any other text, explanation, or formatting.
 
+If you cannot reliably compare the two functions do not provide an explanation, simply return 0 as a rating.
+
 Inputs:
 Function A (Decompiled):
 {{DECOMPILED_FUNC}}
