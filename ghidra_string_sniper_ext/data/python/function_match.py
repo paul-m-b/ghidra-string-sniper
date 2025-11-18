@@ -107,13 +107,3 @@ class FUNCTION_MATCH:
         with open("./GSS_results/MATCHES.json", "w") as f:
             json.dump(out_dict, f, indent=4)
 
-
-
-
-
-
-
-a = FUNCTION_MATCH()
-#b = a.find_matching_func("test_materials/C-Web-Server/test_server_decomp.txt", ["test_materials/C-Web-Server/test_server_source.txt","test_materials/C-Web-Server/test_server_actual_source.txt","test_materials/useless_func.txt"])
-
-a.iterate_through_results()

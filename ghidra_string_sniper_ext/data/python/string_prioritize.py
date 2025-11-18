@@ -264,9 +264,9 @@ class STRING_PRIORITIZE:
             raise e
 
 
-    def prioritize_strings(self, binpath: str):
+    def prioritize_strings(self, binpath: str, lang: str=None):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
-        user_prompt = str(self.get_ghidra_strings(binpath))
+        user_prompt = str(self.get_ghidra_strings(binpath, lang=lang))
         response_format = json.loads(self.get_prompt("cfg/strprioritize_response.json"))
 
         messages = [
@@ -276,6 +276,10 @@ class STRING_PRIORITIZE:
 
         response = self.LLM.query_LLM(self.MODEL, messages, [])
         content = response["choices"][0]["message"]["content"].split("\n")
+
+        #TODO THIS SHOULD NOT BE USING STRING SPLICING. AT LEAST SPLIT THE STRING AND GRAB THE LAST PART OR SOMETHING
+        # WILL FIX LATER
+        #TODO: ALSO INCLUDE ERROR HANDLING IF THE LLM OUTPUTS THE WRONG THING.
 
         output = {}
         for string in content:
@@ -301,9 +305,9 @@ class STRING_PRIORITIZE:
     Also, run non-LLM heuristics on the strings.
     Once strings are ordered by said heuristics, extract decompiled code from Ghidra for each string
     '''
-    def get_ghidra_strings(self, binary_path) -> list[str]:
+    def get_ghidra_strings(self, binary_path: str, lang: str=None) -> list[str]:
         logging.info("Loading binary into ghidra..")
-        with pyghidra.open_program(binary_path, analyze=True) as flat_api:
+        with pyghidra.open_program(binary_path, analyze=True, language=lang) as flat_api:
             from ghidra.app.decompiler import DecompInterface
             from ghidra.util.task import ConsoleTaskMonitor
 
@@ -386,5 +390,3 @@ class STRING_PRIORITIZE:
 
 
 
-a = STRING_PRIORITIZE()
-a.prioritize_strings("./server")
