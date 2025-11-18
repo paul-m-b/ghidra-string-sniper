@@ -279,14 +279,9 @@ class STRING_PRIORITIZE:
 
         output = {}
         for string in content:
-            '''
-            TODO: fix this. unfortunately the LLM will sometimes make minor changes to strings.
-                because we use hashes need to make sure that the strings are the same between folder
-                creation and when they're added into the results.json file
-            '''
             actual_string = string[:-2]
-            folder_name = actual_string.encode("utf-8").strip()
-            logging.info(folder_name)
+            actual_string = self.normalize_string(actual_string)
+            folder_name = actual_string.encode("utf-8")
             md5_hash = hashlib.md5()
             md5_hash.update(folder_name)
             folder_name = str(md5_hash.hexdigest())
@@ -306,7 +301,7 @@ class STRING_PRIORITIZE:
     Also, run non-LLM heuristics on the strings.
     Once strings are ordered by said heuristics, extract decompiled code from Ghidra for each string
     '''
-    def get_ghidra_strings(self, binary_path):
+    def get_ghidra_strings(self, binary_path) -> list[str]:
         logging.info("Loading binary into ghidra..")
         with pyghidra.open_program(binary_path, analyze=True) as flat_api:
             from ghidra.app.decompiler import DecompInterface
@@ -374,8 +369,8 @@ class STRING_PRIORITIZE:
                     else:
                         logging.info(f"Decomp failed for {function.getName()}")
 
+                string = self.normalize_string(string)
                 folder_name = string.encode("utf-8")
-                logging.info(folder_name)
                 md5_hash = hashlib.md5()
                 md5_hash.update(folder_name)
                 folder_name = str(md5_hash.hexdigest())
@@ -384,6 +379,10 @@ class STRING_PRIORITIZE:
                     file.write(all_decomp)
 
             return string_list
+
+    def normalize_string(self, s: str) -> str:
+        s = s.replace("\\n","").replace("\\t","").replace("\\r","")
+        return re.sub(r"\s+","",s)
 
 
 
