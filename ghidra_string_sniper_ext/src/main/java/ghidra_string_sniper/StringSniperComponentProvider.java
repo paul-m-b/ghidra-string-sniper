@@ -16,8 +16,6 @@ import ghidra.program.model.listing.Program;
 import ghidra.app.services.GoToService;
 import ghidra.util.Msg;
 
-
-
 public class StringSniperComponentProvider extends ComponentProvider {
     // Ghidra data
     private Program currentProgram;
@@ -47,7 +45,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         }
 
         addLocalAction(new SearchForStringsAction(this, owner));
-        addLocalAction(new SortStringsAction(this, owner));
         addLocalAction(new DeepResearchAction(this,owner));
         addLocalAction(new HelpAction(this,owner));
     }
@@ -323,11 +320,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
                 fireTableRowsDeleted(row, row);
             }
         }
-
-
-        
-        
-
     }
 
     // For double clicking adress to navigate inside of ghidra to the address.
