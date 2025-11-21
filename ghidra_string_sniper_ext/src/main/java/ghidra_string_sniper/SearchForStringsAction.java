@@ -3,6 +3,8 @@ package ghidra_string_sniper;
 import java.util.Arrays;
 import java.util.List;
 
+import javax.swing.JOptionPane;
+
 import docking.ActionContext;
 import docking.ComponentProvider;
 import docking.action.DockingAction;
@@ -23,6 +25,12 @@ public class SearchForStringsAction extends DockingAction {
     }
     @Override
     public void actionPerformed(ActionContext context) {
+        //Prompts user for their api key that will be used for later phases
+        String tokenValue = JOptionPane.showInputDialog("Enter your Openrouter API key here:","EnterValue");
+        
+        //May strip/modify code below.  Proof of concept work no longer needed.
+        
+        
         ComponentProvider cp = context.getComponentProvider();
         if (cp instanceof StringSniperComponentProvider) {
             // get component provider and program
