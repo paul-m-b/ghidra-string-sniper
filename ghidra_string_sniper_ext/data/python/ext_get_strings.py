@@ -1,4 +1,5 @@
 from string_prioritize import STRING_PRIORITIZE
+import sys
 
 def main():
     BINARY_PATH = sys.argv[1]
