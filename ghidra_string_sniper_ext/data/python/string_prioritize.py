@@ -231,7 +231,7 @@ class STRING_PRIORITIZE:
             folder_name = str(md5_hash.hexdigest())
             output[string[:-2]] = {
                     "confidence" : int(string[-2:]),
-                    "entropy" : self.get_entropy_score(string[:-2]),
+                    "entropy" : self.shannon_entropy(string[:-2]),
                     "hash": folder_name
             }
          
