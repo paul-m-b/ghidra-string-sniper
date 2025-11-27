@@ -20,7 +20,7 @@ class STRING_PRIORITIZE:
         self.MODEL = "openai/gpt-oss-20b:free"
         self.LLM = LLM_INTERACT()
         self.MAX_STRING_COUNT = 10
-
+        self.MAX_DEPTH = 4
 
     '''
     Calculate the shannon entropy for a particular string.
@@ -290,6 +290,10 @@ class STRING_PRIORITIZE:
                 str_addr = string_addrs[string]
                 references = flat_api.getReferencesTo(str_addr)
 
+                if (not references):
+                    logging.critical(f"No references to '{string}' found.")
+                    continue
+
                 decompiler = DecompInterface()
                 decompiler.openProgram(program)
 
@@ -299,6 +303,11 @@ class STRING_PRIORITIZE:
                 for ref in references:
                     from_addr = ref.getFromAddress()
                     function = flat_api.getFunctionContaining(from_addr)
+
+                    #look for nested function references
+                    if (not function):
+                        logging.info("Calling recursive reference search.")
+                        function = self.search_for_function(flat_api, from_addr, 0)
                     
                     if (not function or function in seen_functions):
                         continue
@@ -327,8 +336,22 @@ class STRING_PRIORITIZE:
 
             return string_list
 
+    def search_for_function(self, flat_api, addr, ctr):
+        if (ctr >= self.MAX_DEPTH):
+            return None
+
+        references = flat_api.getReferencesTo(addr)
+        for ref in references:
+            from_addr = ref.getFromAddress()
+            function = flat_api.getFunctionContaining(from_addr)
+
+            if (not function):
+                return self.search_for_function(flat_api, from_addr, ctr+1)
+            else:
+                return function
+
+
     def normalize_string(self, s: str) -> str:
         s = s.replace("\\n","").replace("\\t","").replace("\\r","")
         return re.sub(r"\s+","",s)
-
 
