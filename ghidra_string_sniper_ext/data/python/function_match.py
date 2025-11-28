@@ -11,6 +11,7 @@ class FUNCTION_MATCH:
     def __init__(self):
         self.MODEL= "openai/gpt-oss-20b:free"
         self.LLM = LLM_INTERACT()
+        self.MAX_RETRIES = 3
 
     def open_file(self, path: str, mode: str) -> str:
         try:
@@ -25,7 +26,7 @@ class FUNCTION_MATCH:
     Return a float value out of 10 representing the similarity between the 
     decompiled function and the open source function.
     '''
-    def compare_funcs(self, decomp_func_path: str, source_func_path: str) -> float:
+    def compare_funcs(self, decomp_func_path: str, source_func_path: str, retries: int=0) -> float:
         decomp_func = self.open_file(decomp_func_path, "r")
         source_func = self.open_file(source_func_path, "r")
 
@@ -50,9 +51,13 @@ class FUNCTION_MATCH:
                 logging.info("Being rate limited. Trying again in 2 seconds.")
                 time.sleep(2)
                 self.compare_funcs(decomp_func_path, source_func_path)
+            elif retries < self.MAX_RETRIES:
+                logging.critical("Unkown error. Retrying function match.")
+
+                tries = retries
+                self.compare_funcs(decomp_func_path, source_func_path, retries=tries+1)
             else:
-                logging.critical("Unkown error. Rating set to 0")
-                logging.critical(response)
+                logging.critical("Retries reached. Rating set to zero.")
                 rating = 0
 
         return rating

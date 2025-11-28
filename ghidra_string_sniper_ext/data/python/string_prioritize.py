@@ -21,6 +21,7 @@ class STRING_PRIORITIZE:
         self.LLM = LLM_INTERACT()
         self.MAX_STRING_COUNT = 10
         self.MAX_DEPTH = 4
+        self.MAX_RETRIES = 2
 
     '''
     Calculate the shannon entropy for a particular string.
@@ -204,7 +205,11 @@ class STRING_PRIORITIZE:
             raise e
 
 
-    def prioritize_strings(self, binpath: str, lang: str=None):
+    '''
+    Given a binary path, extract all strings from ghidra, perform non-LLM heuristics to 
+    order them and then pass into an LLM query for final reordering.
+    '''
+    def prioritize_strings(self, binpath: str, lang: str=None, retries: int=0):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
         user_prompt = str(self.get_ghidra_strings(binpath, lang=lang))
         response_format = json.loads(self.get_prompt("cfg/strprioritize_response.json"))
@@ -215,11 +220,21 @@ class STRING_PRIORITIZE:
         ]
 
         response = self.LLM.query_LLM(self.MODEL, messages, [])
-        content = response["choices"][0]["message"]["content"].split("\n")
+        try:
+            content = response["choices"][0]["message"]["content"].split("\n")
+        except:
+            if (retries >= self.MAX_RETRIES):
+                raise e
+            else:
+                logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
+
+                tries = retries
+                language = lang 
+                self.prioritize_strings(binpath, lang=language, retries=tries+1)
+
 
         #TODO THIS SHOULD NOT BE USING STRING SPLICING. AT LEAST SPLIT THE STRING AND GRAB THE LAST PART OR SOMETHING
         # WILL FIX LATER
-        #TODO: ALSO INCLUDE ERROR HANDLING IF THE LLM OUTPUTS THE WRONG THING.
 
         output = {}
         for string in content:
@@ -229,6 +244,19 @@ class STRING_PRIORITIZE:
             md5_hash = hashlib.md5()
             md5_hash.update(folder_name)
             folder_name = str(md5_hash.hexdigest())
+            
+            try:
+                confidence_value = int(string[-2:])
+            except ValueError as e:
+                if (retries >= self.MAX_RETRIES):
+                    raise e
+                else:
+                    logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
+
+                    tries = retries
+                    language = lang 
+                    self.prioritize_strings(binpath, lang=language, retries=tries+1)
+
             output[string[:-2]] = {
                     "confidence" : int(string[-2:]),
                     "entropy" : self.shannon_entropy(string[:-2]),
@@ -348,6 +376,7 @@ class STRING_PRIORITIZE:
             if (not function):
                 return self.search_for_function(flat_api, from_addr, ctr+1)
             else:
+                logging.info("Recursive search found function.")
                 return function
 
 
