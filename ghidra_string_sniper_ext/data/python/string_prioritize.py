@@ -17,7 +17,8 @@ logging.basicConfig(level=logging.INFO)
 
 class STRING_PRIORITIZE:
     def __init__(self):
-        self.MODEL = "openai/gpt-oss-20b:free"
+        #self.MODEL = "openai/gpt-oss-20b:free"
+        self.MODEL = "openai/gpt-4o-mini"
         self.LLM = LLM_INTERACT()
         self.MAX_STRING_COUNT = 10
         self.MAX_DEPTH = 4
@@ -212,12 +213,13 @@ class STRING_PRIORITIZE:
     def prioritize_strings(self, binpath: str, lang: str=None, retries: int=0):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
         user_prompt = str(self.get_ghidra_strings(binpath, lang=lang))
-        response_format = json.loads(self.get_prompt("cfg/strprioritize_response.json"))
 
         messages = [
             {"role":"system","content":system_prompt},
             {"role":"user","content":user_prompt}
         ]
+
+        logging.info("Starting reordering LLM query...")
 
         response = self.LLM.query_LLM(self.MODEL, messages, [])
         try:
@@ -237,8 +239,11 @@ class STRING_PRIORITIZE:
         # WILL FIX LATER
 
         output = {}
+        logging.info(content)
         for string in content:
-            actual_string = string[:-2]
+            string = string.split("--GSS_DELIM--")
+
+            actual_string = string[0]
             actual_string = self.normalize_string(actual_string)
             folder_name = actual_string.encode("utf-8")
             md5_hash = hashlib.md5()
@@ -246,7 +251,7 @@ class STRING_PRIORITIZE:
             folder_name = str(md5_hash.hexdigest())
             
             try:
-                confidence_value = int(string[-2:])
+                confidence_value = int(string[1])
             except ValueError as e:
                 if (retries >= self.MAX_RETRIES):
                     raise e
@@ -257,9 +262,9 @@ class STRING_PRIORITIZE:
                     language = lang 
                     self.prioritize_strings(binpath, lang=language, retries=tries+1)
 
-            output[string[:-2]] = {
-                    "confidence" : int(string[-2:]),
-                    "entropy" : self.shannon_entropy(string[:-2]),
+            output[string[0]] = {
+                    "confidence" : int(string[1]),
+                    "entropy" : self.shannon_entropy(string[0]),
                     "hash": folder_name
             }
          

@@ -38,5 +38,6 @@ When strings seem equally useful:
 
 
 Output format
-	Return the strings followed by a space and then their usefulness. DO NOT PROVIDE ANY OTHER COMMENTARY.
+	Return the string, followed by the following delimeter "--GSS_DELIM--" and then the string's usefulness. DO NOT DEVIATE FROM THIS OUTPUT FORMAT. DO NOT PROVIDE ADDITIONAL COMMENTARY.
+	Example Output: useful open source string--GSS_DELIM--10
 

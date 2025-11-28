@@ -17,7 +17,7 @@ def main():
     f.iterate_through_results()
 
     fe = FEATURE_EXTRACT()
-    f.iterate_results()
+    fe.iterate_results()
 
     print("Done...")
 
