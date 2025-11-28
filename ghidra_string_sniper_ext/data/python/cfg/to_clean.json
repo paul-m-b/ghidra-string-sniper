@@ -1,0 +1,7 @@
+{
+"results_paths":[
+	"./GSS_results",
+	"./GSS_decomps",
+	"./results.json"],
+"ghidra_paths":["./*_ghidra"]
+}
