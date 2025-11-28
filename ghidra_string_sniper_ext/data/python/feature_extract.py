@@ -12,6 +12,7 @@ place into ghidra.
 This feature extraction will happen between open source code and decompilation that has received
 a certain confidence value during the function matching process.
 '''
+
 class FEATURE_EXTRACT:
     def __init__(self):
         self.MODEL="openai/gpt-oss-20b:free"
@@ -26,8 +27,26 @@ class FEATURE_EXTRACT:
             logging.critical(f"Error opeing `{path}`.")
             return "NO FILE CONTENT REPORTED. ASSUME NO CODE"
 
-    def extract_features(self, decomp_func_path: str, source_func_path: str):
-        raise NotImplemented
+    def extract_features(self, str_hash: str, decomp_func_path: str, source_func_path: str):
+        decomp_func = self.open_file(decomp_func_path, "r")
+        source_func = self.open_file(source_func_path, "r")
+
+        system_prompt = self.open_file("cfg/featext_system.txt", "r")
+        user_prompt = f"Extract features from the following functions:\nDECOMPILATION:\n{decomp_func}\n---\nOPEN-SOURCE CODE:\n{source_func}\n---"
+
+        messages = [
+            {"role":"system","content":system_prompt},
+            {"role":"user","content":user_prompt}
+        ]
+
+        response = self.LLM.query_LLM(self.MODEL, messages)
+
+        content = response["choices"][0]["message"]["content"]
+
+        fpath = f"GSS_decomps/{str_hash}/EXTRACTIONS.txt"
+        with open(fpath, "w") as f:
+            f.write(content)
+            logging.info(f"Wrote proposals to {fpath}")
 
 
     '''
@@ -45,8 +64,8 @@ class FEATURE_EXTRACT:
             if (confidence < self.CONFIDENCE_THRESHOLD):
                 continue
 
-            decomp_path = f"{GSS_decomps}/{str_hash}/decomp.txt"
+            decomp_path = f"GSS_decomps/{str_hash}/decomp.txt"
 
             logging.info(f"Analyzing {source_path}")
-            self.extract_features(decomp_path, source_path)
+            self.extract_features(str_hash, decomp_path, source_path)
 

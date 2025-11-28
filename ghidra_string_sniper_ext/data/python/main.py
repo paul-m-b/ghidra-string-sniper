@@ -1,6 +1,7 @@
 from string_prioritize import STRING_PRIORITIZE
 from function_match import FUNCTION_MATCH
 from sourcegraph_query import SOURCEGRAPH_QUERY
+from feature_extract import FEATURE_EXTRACT
 
 def main():
     BINARY_PATH = "./server"
@@ -14,6 +15,9 @@ def main():
 
     f = FUNCTION_MATCH()
     f.iterate_through_results()
+
+    fe = FEATURE_EXTRACT()
+    f.iterate_results()
 
     print("Done...")
 
