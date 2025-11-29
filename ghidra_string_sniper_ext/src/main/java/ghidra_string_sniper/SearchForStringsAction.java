@@ -1,5 +1,7 @@
 package ghidra_string_sniper;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -9,62 +11,63 @@ import docking.ActionContext;
 import docking.ComponentProvider;
 import docking.action.DockingAction;
 import docking.action.ToolBarData;
-import ghidra.app.services.ProgramManager;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.data.StringDataInstance;
-import ghidra.program.model.listing.Data;
-import ghidra.program.model.listing.Program;
-import ghidra.program.util.DefinedStringIterator;
 import ghidra.util.Msg;
 import resources.Icons;
 
 public class SearchForStringsAction extends DockingAction {
-    public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
-        super("Search For Strings", owner);
-        setToolBarData(new ToolBarData(Icons.REFRESH_ICON));
-    }
-    @Override
-    public void actionPerformed(ActionContext context) {
-        //Prompts user for their api key that will be used for later phases
-        String tokenValue = JOptionPane.showInputDialog("Enter your Openrouter API key here:","EnterValue");
-        
-        //May strip/modify code below.  Proof of concept work no longer needed.
-        
-        
-        ComponentProvider cp = context.getComponentProvider();
-        if (cp instanceof StringSniperComponentProvider) {
-            // get component provider and program
-            StringSniperComponentProvider sscp = (StringSniperComponentProvider)cp;
-            Program program = sscp.getTool().getService(ProgramManager.class).getCurrentProgram();
-            sscp.clearStrings();
-            // start the search
-            DefinedStringIterator itr = DefinedStringIterator.forProgram(program);
-            while (itr.hasNext()) {
-                Data stringData = itr.next();
-                StringDataInstance sdi = StringDataInstance.getStringDataInstance(stringData);
-                if (sdi != null) {
-					String stringValue = sdi.getStringValue();
-					if (stringValue != null && !stringValue.isEmpty()) {
-						// Get the starting address for the defined string
-						Address addr = stringData.getAddress(); // or stringData.getMinAddress()
-						// add to provider including address
-						sscp.addString(new StringData(stringValue, addr));
-					}
-                }
-            }
-        }
+	public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
+		super("Search For Strings", owner);
+		setToolBarData(new ToolBarData(Icons.REFRESH_ICON));
+	}
 
-		// temp run python script
-		try {
+	@Override
+	public void actionPerformed(ActionContext context) {
+		
+		ComponentProvider cp = context.getComponentProvider();
+		if (cp instanceof StringSniperComponentProvider) {
+		    // get component provider and program
+		    StringSniperComponentProvider sscp = (StringSniperComponentProvider)cp;
 
-			// run in python and display stdout
-			List<String> args = Arrays.asList("arg1", "arg2");
-			PythonRunner.RunResult res = PythonRunner.runSystemPython("python/", "string_prioritize.py", args, 30); // 30s timeout
-			Msg.showInfo(getClass(), cp.getComponent(), "Output", res.stdout);
+			// Prompts user for their api key that will be used for later phases
+			sscp.apiKey = JOptionPane.showInputDialog("Enter your Openrouter API key here:", "token1234");
 
-		} catch (Exception e) {
-			e.printStackTrace();
-			Msg.showInfo(getClass(), cp.getComponent(), "AAHA", "Threw an error" + e.getMessage());
+			// write api key to temp file
+			try (FileWriter writer = new FileWriter(sscp.tempDirectory.resolve("TOKEN").toFile())) {
+				writer.write(sscp.apiKey);
+			} catch (IOException e) {
+				System.err.println("Error writing token file.");
+			}
+
+			// Run python script
+			// temp run python script
+			try {
+				// run in python and display stdout
+				List<String> args = Arrays.asList(sscp.getExecutablePath());
+				PythonRunner.RunResult res = PythonRunner.runSystemPython(sscp.tempDirectory, "ext_get_strings.py", args, 30); // 30s timeout
+				Msg.showInfo(getClass(), cp.getComponent(), "Output", res.stdout);
+
+			} catch (Exception e) {
+				e.printStackTrace();
+				Msg.showInfo(getClass(), cp.getComponent(), "Python run failed:", "Threw an error" + e.getMessage());
+			}
+
+		    // Program program = sscp.getTool().getService(ProgramManager.class).getCurrentProgram();
+		    // sscp.clearStrings();
+		    // // start the search
+		    // DefinedStringIterator itr = DefinedStringIterator.forProgram(program);
+		    // while (itr.hasNext()) {
+		    //     Data stringData = itr.next();
+		    //     StringDataInstance sdi = StringDataInstance.getStringDataInstance(stringData);
+		    //     if (sdi != null) {
+			// 		String stringValue = sdi.getStringValue();
+			// 		if (stringValue != null && !stringValue.isEmpty()) {
+			// 			// Get the starting address for the defined string
+			// 			Address addr = stringData.getAddress(); // or stringData.getMinAddress()
+			// 			// add to provider including address
+			// 			sscp.addString(new StringData(stringValue, addr));
+			// 		}
+		    //     }
+		    // }
 		}
     }
     @Override

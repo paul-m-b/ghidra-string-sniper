@@ -4,22 +4,31 @@ import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 import docking.ComponentProvider;
+import ghidra.framework.Application;
 import ghidra.framework.plugintool.PluginTool;
 import resources.Icons;
 import java.net.URI;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Program;
 import ghidra.app.services.GoToService;
 import ghidra.util.Msg;
+import java.nio.file.*;
+import generic.jar.ResourceFile;
 
 public class StringSniperComponentProvider extends ComponentProvider {
     // Ghidra data
     private Program currentProgram;
     private StringSniperPlugin plugin;
+
+	// Plugin state
+	public String apiKey;
+	public Path tempDirectory;
 
     // Data
     private StringTableModel stringsTableModel;
@@ -28,8 +37,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private JTabbedPane tabbedPane;
     private JTable stringsTable;
     private JPanel resultsPanel;
-    // Stores the latest result panel accordian tab
-    private JPanel currentResultPanel;
 
     public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
@@ -44,10 +51,30 @@ public class StringSniperComponentProvider extends ComponentProvider {
             setIcon(Icons.NOT_ALLOWED_ICON);
         }
 
+		// create temp dir
+		ResourceFile base;
+		try {
+			base = Application.getModuleDataSubDirectory("python/");
+			tempDirectory = Files.createTempDirectory("ghidra-sniper-python-script-");
+			copyRecursive(base.getFile(false), tempDirectory);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
         addLocalAction(new SearchForStringsAction(this, owner));
         addLocalAction(new DeepResearchAction(this,owner));
         addLocalAction(new HelpAction(this,owner));
     }
+
+	static void copyRecursive(File src, Path dest) throws IOException {
+		if (src.isDirectory()) {
+			for (File f : Objects.requireNonNull(src.listFiles()))
+				copyRecursive(f, dest.resolve(src.toPath().relativize(f.toPath()).toString()));
+		} else {
+			Files.createDirectories(dest.getParent());
+			Files.copy(src.toPath(), dest, StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
 
     public void clearStrings() {
         stringsTableModel.clear();
@@ -57,25 +84,22 @@ public class StringSniperComponentProvider extends ComponentProvider {
     public void setProgram(Program program) {
         this.currentProgram = program;
     }
-
-    public void addString(StringData string) {
-        stringsTableModel.add(string);
+	
+    public String getExecutablePath() {
+		return currentProgram.getExecutablePath();
     }
-    
+
     public StringTableModel getStringTableModel(){
         return stringsTableModel;
     }
-    public List<StringData> getStringData() {
-        return stringsTableModel.getStringData();
-    }
 
-    public void addResult(ResultData result) {
+    public void addResult(String value, float confidence) {
         // Can be implemented later.  Purpose is to remove old results for only the current one to appear.
         //resultsPanel.removeALL();
         JPanel accordionPanel = new JPanel();
         accordionPanel.setLayout(new BoxLayout(accordionPanel, BoxLayout.Y_AXIS));
 
-        JButton accordionButton = new JButton("► " + result.string.value);
+        JButton accordionButton = new JButton("► " + value);
         accordionButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, accordionButton.getPreferredSize().height));
         accordionButton.setFocusPainted(false);
 
@@ -84,10 +108,10 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         // Colors text based on how confident it's related to the repository 
         // (I'm assuming we'll implrement a way to make it score out of 10)
-        JLabel confidenceScore = new JLabel("Confidence: " + result.confidence + "/10");
-        if(result.confidence >= 7.5){
+        JLabel confidenceScore = new JLabel("Confidence: " + confidence + "/10");
+        if(confidence >= 7.5){
             confidenceScore.setForeground(Color.GREEN);
-        } else if(result.confidence >= 3.5){
+        } else if(confidence >= 3.5){
             confidenceScore.setForeground(Color.BLUE);
         }else{
             confidenceScore.setForeground(Color.RED);
@@ -119,7 +143,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         accordionContent.setVisible(false);
         accordionButton.addActionListener(e -> {
             accordionContent.setVisible(!accordionContent.isVisible());
-            accordionButton.setText((accordionContent.isVisible() ? "▼ " : "► ") + result.string.value);
+            accordionButton.setText((accordionContent.isVisible() ? "▼ " : "► ") + value);
             accordionPanel.revalidate();
             accordionPanel.repaint();
         });
@@ -130,10 +154,9 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     // === Filtering (restored)
-    private void filterStrings(String query) {
-        stringsTableModel.filter(query);
-    }
-
+    // private void filterStrings(String query) {
+    //     stringsTableModel.filter(query);
+    // }
     
     // === Build UI
     private void buildPanel() {
@@ -148,7 +171,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         searchField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyReleased(KeyEvent e) {
-                filterStrings(searchField.getText());
+                // filterStrings(searchField.getText());
             }
         });
         
@@ -157,20 +180,20 @@ public class StringSniperComponentProvider extends ComponentProvider {
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.add(searchField, BorderLayout.CENTER);
 
-        JButton removeButton = new JButton("Remove Selected");
-        removeButton.setEnabled(false);
-        // False until something is selected 
+        // JButton removeButton = new JButton("Remove Selected");
+        // removeButton.setEnabled(false);
+        // // False until something is selected 
 
-        removeButton.setToolTipText("Remove the selected string from the table");
-        removeButton.addActionListener(e -> {
-            int selectedRow = stringsTable.getSelectedRow();
-            if (selectedRow != -1) {
-                stringsTableModel.removeRow(selectedRow);
-            } else {
-                JOptionPane.showMessageDialog(stringsPanel, "Please select a string to remove.", "No Selection", JOptionPane.WARNING_MESSAGE);
-            }
-        });
-        topPanel.add(removeButton, BorderLayout.EAST);
+        // removeButton.setToolTipText("Remove the selected string from the table");
+        // removeButton.addActionListener(e -> {
+        //     int selectedRow = stringsTable.getSelectedRow();
+        //     if (selectedRow != -1) {
+        //         stringsTableModel.removeRow(selectedRow);
+        //     } else {
+        //         JOptionPane.showMessageDialog(stringsPanel, "Please select a string to remove.", "No Selection", JOptionPane.WARNING_MESSAGE);
+        //     }
+        // });
+        // topPanel.add(removeButton, BorderLayout.EAST);
 
         stringsPanel.add(topPanel, BorderLayout.NORTH);
 
@@ -180,40 +203,40 @@ public class StringSniperComponentProvider extends ComponentProvider {
         stringsTableModel = new StringTableModel();
         stringsTable = new JTable(stringsTableModel);
 
-        stringsTable.getSelectionModel().addListSelectionListener(e -> {
-            boolean hasSelection = stringsTable.getSelectedRow() != -1;
-            removeButton.setEnabled(hasSelection);
-        });
+        // stringsTable.getSelectionModel().addListSelectionListener(e -> {
+        //     boolean hasSelection = stringsTable.getSelectedRow() != -1;
+        //     removeButton.setEnabled(hasSelection);
+        // });
 
         // Double-click handler: switch to Results tab
-        stringsTable.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    int row = stringsTable.rowAtPoint(e.getPoint());
-                    int col = stringsTable.columnAtPoint(e.getPoint());
-                    if (row != -1) {
-                        if (col == 1) {
-                            // Double clicking the Address column takes you to the section in ghidra as if you went Navigation, Go to, manually enter adress
-                            Object addressValue = stringsTable.getValueAt(row, 1);
-                            if (addressValue != null && !"N/A".equals(addressValue)) {
-                                navigateToAddress(addressValue.toString());
-                            } else {
-                                JOptionPane.showMessageDialog(stringsTable, 
-                                    // Have not tested this fail case so may not work.  Needs testing.
-                                    "No valid address for this string.", 
-                                    "Invalid Address", JOptionPane.WARNING_MESSAGE);
-                            }
-                        } else {
-                            // Double clicking works as normal for the strings column 
-                            addResult(new ResultData(1.0f,
-                                    new StringData((String) stringsTable.getValueAt(row, 0), null)));
-                            tabbedPane.setSelectedIndex(1);
-                        }
-                    }
-                }
-            }
-        });
+        // stringsTable.addMouseListener(new MouseAdapter() {
+        //     @Override
+        //     public void mouseClicked(MouseEvent e) {
+        //         if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+        //             int row = stringsTable.rowAtPoint(e.getPoint());
+        //             int col = stringsTable.columnAtPoint(e.getPoint());
+        //             if (row != -1) {
+        //                 if (col == 1) {
+        //                     // Double clicking the Address column takes you to the section in ghidra as if you went Navigation, Go to, manually enter adress
+        //                     Object addressValue = stringsTable.getValueAt(row, 1);
+        //                     if (addressValue != null && !"N/A".equals(addressValue)) {
+        //                         navigateToAddress(addressValue.toString());
+        //                     } else {
+        //                         JOptionPane.showMessageDialog(stringsTable, 
+        //                             // Have not tested this fail case so may not work.  Needs testing.
+        //                             "No valid address for this string.", 
+        //                             "Invalid Address", JOptionPane.WARNING_MESSAGE);
+        //                     }
+        //                 } else {
+        //                     // Double clicking works as normal for the strings column 
+        //                     // addResult(new ResultData(1.0f,
+        //                     //         new StringData((String) stringsTable.getValueAt(row, 0), null)));
+        //                     // tabbedPane.setSelectedIndex(1);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // });
      
         JScrollPane scrollPane = new JScrollPane(stringsTable);
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
@@ -223,30 +246,16 @@ public class StringSniperComponentProvider extends ComponentProvider {
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
         tabbedPane.addTab("Results", resultsPanel);
-
-        // Demo data
-        addResult(new ResultData(1.0f, new StringData("test", null)));
-        addResult(new ResultData(1.0f, new StringData("string2", null)));
-        addResult(new ResultData(1.0f, new StringData("lol", null)));
     }
 
     @Override
     public JComponent getComponent() {
         return tabbedPane;
     }
-
-
-
     
     // === Table model
     public class StringTableModel extends AbstractTableModel {
-        List<StringData> stringData = new ArrayList<>();
-        private List<StringData> allData = new ArrayList<>();
-
-
-        public List<StringData> getStringData(){
-            return stringData;
-        }
+        List<String> stringData = new ArrayList<>();
 
         @Override
         public int getRowCount() {
@@ -261,18 +270,18 @@ public class StringSniperComponentProvider extends ComponentProvider {
         @Override
         public String getColumnName(int col) {
             if (col == 0) return "String";
-            if (col == 1) return "Address";
+            // if (col == 1) return "Address";
             return "";
         }
 
         @Override
         public Object getValueAt(int row, int col) {
-            StringData s = stringData.get(row);
+            String s = stringData.get(row);
             switch (col) {
                 case 0:
-                    return s.value;
-                case 1:
-                    return s.address != null ? s.address.toString() : "N/A";
+                    return s;
+                // case 1:
+                //     return s.address != null ? s.address.toString() : "N/A";
                 default:
                     return null;
             }
@@ -283,9 +292,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
             return false;
         }
 
-        public void add(StringData string) {
+        public void add(String string) {
             stringData.add(string);
-            allData.add(string);
             int row = stringData.size() - 1;
             fireTableRowsInserted(row, row);
         }
@@ -293,33 +301,33 @@ public class StringSniperComponentProvider extends ComponentProvider {
         public void clear() {
             int rows = getRowCount();
             stringData.clear();
-            allData.clear();
             if (rows > 0) fireTableRowsDeleted(0, rows - 1);
         }
 
         // Used by filterStrings()
-        public void filter(String query) {
-            stringData.clear();
-            if (query == null || query.isEmpty()) {
-                stringData.addAll(allData);
-            } else {
-                String lower = query.toLowerCase();
-                for (StringData s : allData) {
-                    if (s.value.toLowerCase().contains(lower)) {
-                        stringData.add(s);
-                    }
-                }
-            }
-            fireTableDataChanged();
-        }
+        // public void filter(String query) {
+        //     stringData.clear();
+        //     if (query == null || query.isEmpty()) {
+        //         stringData.addAll(allData);
+        //     } else {
+        //         String lower = query.toLowerCase();
+        //         for (StringData s : allData) {
+        //             if (s.value.toLowerCase().contains(lower)) {
+        //                 stringData.add(s);
+        //             }
+        //         }
+        //     }
+        //     fireTableDataChanged();
+        // }
+
         // For removing string entries
-        public void removeRow(int row) {
-            if (row >= 0 && row < stringData.size()) {
-                StringData removed = stringData.remove(row);
-                allData.remove(removed); // Keep filtered/all data consistent
-                fireTableRowsDeleted(row, row);
-            }
-        }
+        // public void removeRow(int row) {
+        //     if (row >= 0 && row < stringData.size()) {
+        //         StringData removed = stringData.remove(row);
+        //         allData.remove(removed); // Keep filtered/all data consistent
+        //         fireTableRowsDeleted(row, row);
+        //     }
+        // }
     }
 
     // For double clicking adress to navigate inside of ghidra to the address.
@@ -346,6 +354,4 @@ public class StringSniperComponentProvider extends ComponentProvider {
             Msg.showError(this, null, "Navigation Error", "Failed to navigate to address: " + e.getMessage(), e);
         }
     }
-
-
 }
