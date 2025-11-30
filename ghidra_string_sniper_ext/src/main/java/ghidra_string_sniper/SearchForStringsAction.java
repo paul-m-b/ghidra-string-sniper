@@ -1,5 +1,8 @@
 package ghidra_string_sniper;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -25,11 +28,40 @@ public class SearchForStringsAction extends DockingAction {
     }
     @Override
     public void actionPerformed(ActionContext context) {
-        //Prompts user for their api key that will be used for later phases
-        String tokenValue = JOptionPane.showInputDialog("Enter your Openrouter API key here:","EnterValue");
+        // Prompt user for API key
+        String tokenValue = JOptionPane.showInputDialog("Enter your Openrouter API key here:", "EnterValue");
+
+        try {
+            File keyFile = File.createTempFile("SniperKey", ".txt");
+            //removes file when JVM exits
+            keyFile.deleteOnExit(); 
+
+            //Write the API key into the temp file
+            try (FileWriter writer = new FileWriter(keyFile)) {
+                writer.write(tokenValue);
+            }
+
+            //Stores the path for later when connecting to the backend (EXAMPLE: static global or provider)
+            System.setProperty("StringSniperKeyFile", keyFile.getAbsolutePath());
+
+        } catch (IOException e) {
+            Msg.showError(this, null, "Key File Error", "Failed to write API key: " + e.getMessage());
+        }
+
+        /* 
+        We can find the key later by using the following code block:
+
+        String keyPath = System.getProperty("StringSniperKeyFile");
+        if (keyPath != null) {
+            File keyFile = new File(keyPath);
+
+            String apiKey = Files.readString(keyFile.toPath());
+        }
         
-        //May strip/modify code below.  Proof of concept work no longer needed.
-        
+        May need to implement a different ability to pass key from front end to back end.        
+        */
+
+
         
         ComponentProvider cp = context.getComponentProvider();
         if (cp instanceof StringSniperComponentProvider) {
