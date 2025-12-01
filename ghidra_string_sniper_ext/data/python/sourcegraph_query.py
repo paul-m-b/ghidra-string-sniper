@@ -35,44 +35,50 @@ class SOURCEGRAPH_QUERY:
         """
 
 
-        query = query.replace('"','\\"')
         query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
 
         url: str = "https://sourcegraph.com/.api/graphql"
         
         payload: dict = {
-            "query": f'''
-            {{
-                search(query: "{query_filtered}", version: V2) {{
-                    results {{
+            "query": '''
+            query Search($query: String!) {
+                search(query: $query, version: V2) {
+                    results {
                         resultCount
-                        results {{
+                        results {
                             __typename
-                            ... on FileMatch {{
-                                repository {{
+                            ... on FileMatch {
+                                repository {
                                     name
-                                }}
-                                file {{
+                                }
+                                file {
                                     name
                                     content
-                                }}
-                                lineMatches {{
+                                }
+                                lineMatches {
                                     lineNumber
-                                }}
-                            }}
-                        }}
-                    }}
-                }}
-            }}
-            '''
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ''',
+            "variables": {
+                "query": query_filtered
+            }
         }
 
-        print (f"\nSearching for {query}")
+        print(f"\nSearching for {query[:100]}")
         
         try:
-            response: Response = requests.post(url, json=payload, timeout=30)
+            response: requests.Response = requests.post(url, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
+            
+            if 'errors' in data:
+                print(f"GraphQL Errors: {data['errors']}")
+                return set()
 
             results = data['data']['search']['results']
             result_count = results['resultCount']
@@ -84,8 +90,7 @@ class SOURCEGRAPH_QUERY:
                     repos.add(match['repository']['name'])
 
                     # List of line numbers with matches
-                    matched_lines = set(match['lineNumber'] for match in match['lineMatches'])
-                    line_matches = match['lineMatches']
+                    matched_lines = set(line_match['lineNumber'] for line_match in match['lineMatches'])
 
                     matched_file: str = match['file']['name'].split('.')[0]
                     repo_name: str = match['repository']['name'].split('/')[-1]
@@ -105,22 +110,17 @@ class SOURCEGRAPH_QUERY:
                     os.makedirs(f"GSS_results/{folder_name}/", exist_ok=True)
 
                     with open(f"GSS_results/{folder_name}/"+file_name, 'w') as file:
-                        file.write("-----------GSS-----------\n" + "query: " + query + "\n" + match_msg + "\n-------------------------\n\n" + match['file']['content'])
-
-
-                    # Now find the readme if specified:
-                    '''
-                    if (find_readme == 'true'):
-                        get_readme(match['repository']['name'])
-                    '''
-
-            print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")
+                        file.write("-----------GSS-----------\n" + 
+                                  "query: " + query + "\n" + 
+                                  match_msg + "\n-------------------------\n\n" + 
+                                  match['file']['content'])
             
+            print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")
             return repos
             
         except Exception as e:
             print(f"Error: {e}")
-            return []
+            return set()
 
 
     def iterate_search_strings(self):
