@@ -10,7 +10,12 @@ import ghidra.util.Msg;
 import ghidra_string_sniper.StringSniperComponentProvider;
 import resources.Icons;
 import javax.swing.*;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseAdapter;
+
+
 import java.awt.*;
+import java.net.URI;
 
 
 public class HelpAction extends DockingAction {
@@ -35,7 +40,7 @@ public class HelpAction extends DockingAction {
 			public void run(){
 				JFrame window = new JFrame("Help, Tutorial, and Misc.");
 				
-				window.setSize(800,450);
+				window.setSize(600,450);
 				window.setLocationRelativeTo(null);
 				JTabbedPane tabPanel = new JTabbedPane();
 				
@@ -81,41 +86,113 @@ public class HelpAction extends DockingAction {
 				featuresPage.add(featuresScrollPane, BorderLayout.CENTER);
 
 
-				//Credits
-				JPanel creditsPage = new JPanel(new BorderLayout());
-				creditsPage.add(new JLabel("Credits page here!"));
-				tabPanel.addTab("Credits",creditsPage);
-				JTextArea creditsText = new JTextArea("Credits section:\n\n"
-				+ "Ghidra :https://github.com/NationalSecurityAgency/ghidra\n"
-				//Turn this into a hyperlink^^
-				+ "Contributors:\nPaul Biernat '27 (Projet Lead)\n" 
-				+ "Jack J '28 (Role Here)\n"
-				+ "Jack A '28 (Role Here)\n"
-				+ "Cory Tsang '26 (Role Here)"
-				//Change roles later
-				//Make it hyperlink to our LinkedIns
-				);
-				creditsText.setEditable(false);
-				creditsText.setLineWrap(true);
-				creditsText.setWrapStyleWord(true);
-				JScrollPane creditsScrollPane = new JScrollPane(creditsText);
-				creditsPage.add(creditsScrollPane, BorderLayout.CENTER);
+				//Credits Section
+				JPanel creditsPage = new JPanel();
+				creditsPage.setLayout(new BoxLayout(creditsPage, BoxLayout.Y_AXIS));
+				creditsPage.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+				// Helper: creates a clickable label
+				java.util.function.BiFunction<String, String, JPanel> createPersonLink = (name, url) -> {
+				JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+				panel.setOpaque(false);
+
+				JLabel label = new JLabel("<html><b>" + name + ":</b> </html>");
+
+				JLabel link = new JLabel("<html><u>GitHub</u></html>");
+				link.setForeground(Color.BLUE);
+				link.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+				link.addMouseListener(new MouseAdapter() {
+					@Override
+					public void mouseClicked(MouseEvent e) {
+						try {
+							Desktop.getDesktop().browse(new URI(url));
+						} catch (Exception ex) {
+							Msg.showError(provider, null, "Failed to open URL", ex.getMessage(), ex);
+						}
+					}
+
+					@Override
+					public void mouseEntered(MouseEvent e) {
+						link.setText("<html><u><b>GitHub</b></u></html>");
+					}
+
+					@Override
+					public void mouseExited(MouseEvent e) {
+						link.setText("<html><u>GitHub</u></html>");
+					}
+				});
+
+				panel.add(label);
+				panel.add(link);
+				return panel;
+				};
+
+				//Add contributors
+				creditsPage.add(new JLabel("<html><h3>Contributors</h3></html>"));
+				creditsPage.add(Box.createVerticalStrut(5));
+
+				//Add members to page
+				creditsPage.add(createPersonLink.apply("Paul Biernat '27 (Project Lead)", "https://github.com/paul-m-b"));
+				creditsPage.add(createPersonLink.apply("Jack J '28", "https://github.com/JackJ30"));
+				creditsPage.add(createPersonLink.apply("Jack A '28", "https://github.com/J-AngeI"));
+				creditsPage.add(createPersonLink.apply("Cory Tsang '26", "https://github.com/CoryTsang"));
+
+				// Add tab
+				tabPanel.addTab("Credits", creditsPage);
 
 
 				//Useful Links
-				JPanel linksPage = new JPanel(new BorderLayout());
-				linksPage.add(new JLabel("Links page here!"));
-				tabPanel.addTab("Links",linksPage);
-				JTextArea linksText = new JTextArea("Useful links section:\n\n"
-				+ "Ghidra String Sniper Repository: https://github.com/paul-m-b/ghidra-string-sniper\n"
-				//Should I add: "Ghidra :https://github.com/NationalSecurityAgency/ghidra\n"? I already have it in credits but I feel like it should go here as well.
-				//Turn this into a hyperlink^^
-				);
-				linksText.setEditable(false);
-				linksText.setLineWrap(true);
-				linksText.setWrapStyleWord(true);
-				JScrollPane linksScrollPane = new JScrollPane(linksText);
-				linksPage.add(linksScrollPane, BorderLayout.CENTER);
+				JPanel linksPage = new JPanel();
+				linksPage.setLayout(new BoxLayout(linksPage, BoxLayout.Y_AXIS));
+				linksPage.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+				// Helper: create clickable link label
+				java.util.function.BiFunction<String, String, JLabel> createHyperlink = (text, url) -> {
+					JLabel link = new JLabel("<html><u>" + text + "</u></html>");
+					link.setForeground(Color.BLUE);
+					link.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+					link.addMouseListener(new MouseAdapter() {
+						@Override
+						public void mouseClicked(MouseEvent e) {
+							try {
+								Desktop.getDesktop().browse(new URI(url));
+							} catch (Exception ex) {
+								Msg.showError(provider, null, "Failed to open URL", ex.getMessage(), ex);
+							}
+						}
+
+						@Override
+						public void mouseEntered(MouseEvent e) {
+							link.setText("<html><u><b>" + text + "</b></u></html>");
+						}
+
+						@Override
+						public void mouseExited(MouseEvent e) {
+							link.setText("<html><u>" + text + "</u></html>");
+						}
+					});
+
+					return link;
+				};
+
+				linksPage.add(new JLabel("<html><h3>Useful Links</h3></html>"));
+				linksPage.add(Box.createVerticalStrut(10));
+
+				//Adding each clickable link
+				linksPage.add(createHyperlink.apply("Ghidra String Sniper Repository", "https://github.com/paul-m-b/ghidra-string-sniper"));
+
+				linksPage.add(Box.createVerticalStrut(5));
+
+				linksPage.add(createHyperlink.apply("RCOS (Rensselaer Center for Open Source)", "https://handbook.rcos.io/#/"));
+
+				linksPage.add(Box.createVerticalStrut(5));
+
+				linksPage.add(createHyperlink.apply("Ghidra Repository", "https://github.com/NationalSecurityAgency/ghidra"));
+
+				tabPanel.addTab("Links", linksPage);
+
 
 
 				//Adding tabs to the tab panel.  Can be increased for later additions
