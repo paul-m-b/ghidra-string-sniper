@@ -93,6 +93,13 @@ public class StringSniperComponentProvider extends ComponentProvider {
         return stringsTableModel;
     }
 
+    /**
+	   This creates a collapsible accordion UI element for each search result from source graph based on the string you selected.
+	   Each accordion contains:
+	   A header button showing the string value
+	   A collapsible content area showing metadata (confidence, repo link, assessment)
+	   This keeps Result UI logic isolated from the main provider class.
+    */
     public void addResult(String value, float confidence) {
         // Can be implemented later.  Purpose is to remove old results for only the current one to appear.
         //resultsPanel.removeALL();
@@ -106,6 +113,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         JPanel accordionContent = new JPanel();
         accordionContent.setLayout(new BoxLayout(accordionContent, BoxLayout.Y_AXIS));
 
+        // Below are the results panel format that sourcegraph data will be entered into.
         // Colors text based on how confident it's related to the repository 
         // (I'm assuming we'll implrement a way to make it score out of 10)
         JLabel confidenceScore = new JLabel("Confidence: " + confidence + "/10");
@@ -119,26 +127,60 @@ public class StringSniperComponentProvider extends ComponentProvider {
         accordionContent.add(confidenceScore);
 
 
-        
-        // Can be changed later, this adds a hyperlink that a user can click to visit the repo URL
-        JLabel repositoryText = new JLabel("URL of repository where code appears: " + "Visit Website");
-        repositoryText.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        repositoryText.addMouseListener(new MouseAdapter() {
+        //Makes a new JPanel to host the text for the repo URL.  User can interact by clicking on link of repo
+        //and be taken to the sourcegraph.com page.  Google.com used for now as placeholder but will be replaced with a variable
+        //that gets the data from parsed data from the fun
+        JPanel repoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        repoPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        repoPanel.setOpaque(false);
+
+        JLabel repoLabel = new JLabel("URL of repository where code appears: ");
+
+        JLabel linkText = new JLabel("<html><u>Visit Website</u></html>");
+        linkText.setForeground(Color.BLUE);
+        linkText.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        linkText.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e){
-                try{
-                    Desktop.getDesktop().browse(new
-                    URI("https://www.google.com"));
-                } catch (Exception ex){
-                    ex.printStackTrace();
+            public void mouseClicked(MouseEvent e) {
+                try {
+                    Desktop.getDesktop().browse(new URI("https://www.google.com"));
+                } catch (Exception ex) {
+                    Msg.showError(StringSniperComponentProvider.this, null,
+                                "Failed to open URL", ex.getMessage(), ex);
                 }
-            } 
+            }
+
+            //Link becomes bold when hovered over and returns to normal after it's hovered off
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                linkText.setText("<html><u><b>Visit Website</b></u></html>");
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                linkText.setText("<html><u>Visit Website</u></html>");
+            }
         });
-        accordionContent.add(repositoryText);    
+
+        repoPanel.add(repoLabel);
+        repoPanel.add(linkText);
+
+        Dimension pref = repoPanel.getPreferredSize();
+        repoPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
+
+        accordionContent.add(repoPanel);
+
+
+        //We will get all of the data after parsing through the backend api response.
+        //Space for our LLM assessment.
+        accordionContent.add(new JLabel("LLM Assessment : " + "Pending"));
         
-        
-        accordionContent.add(new JLabel("LLM Assessment : " + "Testing"));
-        
+        //Hash Result
+        accordionContent.add(new JLabel("MD5 Hash: "+ "Pending"));
+
+        //Entropy level
+        accordionContent.add(new JLabel("Entropy: "+ "Pending"));
 
         accordionContent.setVisible(false);
         accordionButton.addActionListener(e -> {
@@ -158,11 +200,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
     //     stringsTableModel.filter(query);
     // }
     
-    // === Build UI
+    // Build UI
     private void buildPanel() {
         tabbedPane = new JTabbedPane();
-
-        // ===== Strings tab =====
+        		
+        // Strings tab 
         JPanel stringsPanel = new JPanel(new BorderLayout());
 
         // Search bar
@@ -197,7 +239,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         stringsPanel.add(topPanel, BorderLayout.NORTH);
 
-        // ^^ panel with removing option
+
 
         // String list
         stringsTableModel = new StringTableModel();
@@ -242,7 +284,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
         tabbedPane.add("Strings", stringsPanel);
 
-        // ===== Results tab =====
+        // Results tab
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
         tabbedPane.addTab("Results", resultsPanel);
@@ -253,7 +295,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         return tabbedPane;
     }
     
-    // === Table model
+    // Table model
     public class StringTableModel extends AbstractTableModel {
         List<String> stringData = new ArrayList<>();
 

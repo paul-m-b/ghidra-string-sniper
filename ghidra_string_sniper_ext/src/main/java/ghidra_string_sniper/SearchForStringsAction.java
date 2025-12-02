@@ -1,5 +1,6 @@
 package ghidra_string_sniper;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
@@ -15,10 +16,10 @@ import ghidra.util.Msg;
 import resources.Icons;
 
 public class SearchForStringsAction extends DockingAction {
-	public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
-		super("Search For Strings", owner);
-		setToolBarData(new ToolBarData(Icons.REFRESH_ICON));
-	}
+    public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
+        super("Search For Strings", owner);
+        setToolBarData(new ToolBarData(Icons.REFRESH_ICON));
+    }
 
 	@Override
 	public void actionPerformed(ActionContext context) {

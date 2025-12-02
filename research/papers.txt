@@ -1,0 +1,32 @@
+Papers / Blog Posts
+
+https://leehanchung.github.io/blogs/2025/02/26/deep-research/
+    - examines different 'flavors' of deep research that exists and provides a good overview of what it is and how it works.
+    - explains the different "workers" that deep research typically employs
+
+https://cdn.openai.com/deep-research-system-card.pdf
+    - openai paper on what deep research is.
+    - started as early o3 model
+        - web-oritented agentic model
+    - performs searches, follows links, opens PDFs
+    - can also run python in sandboxed environment for data analysis
+        - sandboxed env has no internet access. not important to what we're talking about, but interesting how it's implemented.
+    - performs multi-step research. searches, reasons, then analyzes results with citations to relevant sources.
+    - trained on different data sets, focused on research use cases.
+    - "The training datasets contain a range of tasks from objective auto-gradable tasks with ground truth
+answers, to more open-ended tasks with accompanying rubrics for grading. During training, the
+model responses are graded against the ground truth answers or rubrics using a chain-of-thought
+model as a grader."
+    - something I didn't realize:
+        - deep research itself is an agentic solution -- not a new type of model
+            - exciting because it may allow (force?) us to make our own path with the deep research.
+            - essentially, we would make a deep research agent for finding external sources of truth, instead of using one... this makes more sense to me now lol
+    - models good with tool calling excel here, since it's essentially an agentic solution wrapped around and made to look like a regular model/chat service sort of thing.
+
+https://jina.ai/news/a-practical-guide-to-implementing-deepsearch-deepresearch/
+    - DeepSearch vs deepresearch
+    - search -> read -> reason loop
+        - keeps looping until satisfactory answer or token/arbitrary limits are hit.
+    - DeepResearch seems to utilize DeepSearch but is particularly focused on providing a research-type report
+    - DeepReserach runs many deepsearch instances and then consolidates into a nice format. 
+    - DeepSearch is the technique we would need to implement. I don't think we care about the final part of turning our results into a nice format.
