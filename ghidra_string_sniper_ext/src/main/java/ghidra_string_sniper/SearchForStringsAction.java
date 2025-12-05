@@ -27,10 +27,10 @@ public class SearchForStringsAction extends DockingAction {
         setToolBarData(new ToolBarData(Icons.REFRESH_ICON));
     }
 
-    @Override
+   @Override
     public void actionPerformed(ActionContext context) {
 
-        // ---- API KEY code unchanged ----
+        // --- API KEY code unchanged ---
         String tokenValue = JOptionPane.showInputDialog(
                 "Enter your Openrouter API key here:", "EnterValue"
         );
@@ -55,9 +55,12 @@ public class SearchForStringsAction extends DockingAction {
         sscp.clearStrings();
 
         try {
+
             String tmpDir = System.getProperty("java.io.tmpdir");
 
-            // *** Get results.json ***
+            // ------------------------------
+            // LOAD results.json (entropy + resultsScore + hash)
+            // ------------------------------
             File resultsDir = new File(tmpDir, "GSS_Results");
             File resultsFile = new File(resultsDir, "results.json");
 
@@ -65,11 +68,13 @@ public class SearchForStringsAction extends DockingAction {
                 throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
             }
 
-            String resultsText = Files.readString(resultsFile.toPath());
-            JsonObject resultsRoot = JsonParser.parseString(resultsText).getAsJsonObject();
+            JsonObject resultsRoot =
+                    JsonParser.parseString(Files.readString(resultsFile.toPath())).getAsJsonObject();
 
 
-            // *** Get MATCHES.json (has confidence scores) ***
+            // ------------------------------
+            // LOAD MATCHES.json (score)
+            // ------------------------------
             File matchesDir = new File(tmpDir, "GSS_matches");
             File matchesFile = new File(matchesDir, "MATCHES.json");
 
@@ -77,37 +82,42 @@ public class SearchForStringsAction extends DockingAction {
                 throw new IOException("MATCHES.json not found: " + matchesFile.getAbsolutePath());
             }
 
-            String matchesText = Files.readString(matchesFile.toPath());
-            JsonObject matchesRoot = JsonParser.parseString(matchesText).getAsJsonObject();
+            JsonObject matchesRoot =
+                    JsonParser.parseString(Files.readString(matchesFile.toPath())).getAsJsonObject();
 
 
-            // ==== MERGE PHASE ====
+            // ------------------------------
+            // MERGE DATA AND ADD TO UI
+            // ------------------------------
             for (String extractedValue : resultsRoot.keySet()) {
 
-                JsonObject valObj = resultsRoot.getAsJsonObject(extractedValue);
+                JsonObject rObj = resultsRoot.getAsJsonObject(extractedValue);
 
-                // hash from results.json
-                String hash = valObj.has("hash") ? valObj.get("hash").getAsString() : null;
+                // Pull fields from results.json
+                int resultsScore = rObj.get("confidence").getAsInt();
+                float entropy = rObj.get("entropy").getAsFloat();
+                String hash = rObj.get("hash").getAsString();
 
-                if (hash == null) {
-                    Msg.showWarn(this, null, "Missing Hash", "No hash for: " + extractedValue);
-                    continue;
-                }
-
-                // get confidence from MATCHES.json
-                float floatValue = 0.0f;
+                // Try to get match confidence from MATCHES.json
+                Float matchScore = null;
 
                 if (matchesRoot.has(hash)) {
                     JsonArray arr = matchesRoot.getAsJsonArray(hash);
                     if (arr.size() > 1) {
-                        floatValue = arr.get(1).getAsFloat();
+                        matchScore = arr.get(1).getAsFloat();
                     }
-                } else {
-                    Msg.showWarn(this, null, "Missing Score", "No MATCHES.json entry for hash: " + hash);
                 }
 
-                // Add to the UI table
-                sscp.addString(new StringData(extractedValue, hash, floatValue));
+                // Build final record
+                StringData sd = new StringData(
+                        extractedValue,
+                        hash,
+                        matchScore,     // score (from MATCHES.json)
+                        resultsScore,   // results.json confidence
+                        entropy         // entropy
+                );
+
+                sscp.addString(sd);
             }
 
             sscp.applyDefaultSort();
@@ -115,7 +125,9 @@ public class SearchForStringsAction extends DockingAction {
         } catch (Exception e) {
             Msg.showError(this, null, "Error loading data", e.toString());
         }
-}
+    }
+
+
 
     @Override
     public boolean isEnabledForContext(ActionContext context) {

@@ -68,8 +68,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     public void addResult(ResultData result) {
-        // Commented out to prevent unused compilation errors
-        /*
+        
         JPanel accordionPanel = new JPanel();
         accordionPanel.setLayout(new BoxLayout(accordionPanel, BoxLayout.Y_AXIS));
 
@@ -80,16 +79,22 @@ public class StringSniperComponentProvider extends ComponentProvider {
         JPanel accordionContent = new JPanel();
         accordionContent.setLayout(new BoxLayout(accordionContent, BoxLayout.Y_AXIS));
 
-        JLabel confidenceScore = new JLabel("Confidence: " + result.confidence + "/10");
-        if(result.confidence >= 7.5){
+        // ---------------- CONFIDENCE ----------------
+        JLabel confidenceScore = new JLabel(
+            "Confidence: " + (result.confidence >= 0 ? result.confidence : 0) + "/10"
+        );
+
+
+        if (result.confidence >= 7.5f) {
             confidenceScore.setForeground(Color.GREEN);
-        } else if(result.confidence >= 3.5){
+        } else if (result.confidence >= 3.5f) {
             confidenceScore.setForeground(Color.BLUE);
         } else {
             confidenceScore.setForeground(Color.RED);
         }
         accordionContent.add(confidenceScore);
 
+        // ---------------- REPO / LINK ----------------
         JPanel repoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         repoPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         repoPanel.setOpaque(false);
@@ -108,15 +113,18 @@ public class StringSniperComponentProvider extends ComponentProvider {
                             "Failed to open URL", ex.getMessage(), ex);
                 }
             }
+
             @Override
             public void mouseEntered(MouseEvent e) {
                 linkText.setText("<html><u><b>Visit Website</b></u></html>");
             }
+
             @Override
             public void mouseExited(MouseEvent e) {
                 linkText.setText("<html><u>Visit Website</u></html>");
             }
         });
+
         repoPanel.add(repoLabel);
         repoPanel.add(linkText);
 
@@ -124,10 +132,20 @@ public class StringSniperComponentProvider extends ComponentProvider {
         repoPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
         accordionContent.add(repoPanel);
 
-        accordionContent.add(new JLabel("LLM Assessment : Pending"));
-        accordionContent.add(new JLabel("MD5 Hash: Pending"));
-        accordionContent.add(new JLabel("Entropy: Pending"));
+        // ---------------- MD5 HASH ----------------
+        String hashValue = (result.hash != null) ? result.hash : "N/A";
+        accordionContent.add(new JLabel("MD5 Hash: " + hashValue));
 
+        // ---------------- ENTROPY ----------------
+        String entropyValue = (result.entropy != null)
+                ? String.format("%.4f", result.entropy)
+                : "N/A";
+        accordionContent.add(new JLabel("Entropy: " + entropyValue));
+
+        // ---------------- LLM ASSESSMENT ----------------
+        accordionContent.add(new JLabel("LLM Assessment: Pending"));
+
+        // ---------------- COLLAPSE / EXPAND ----------------
         accordionContent.setVisible(false);
         accordionButton.addActionListener(e -> {
             accordionContent.setVisible(!accordionContent.isVisible());
@@ -139,8 +157,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
         accordionPanel.add(accordionButton);
         accordionPanel.add(accordionContent);
         resultsPanel.add(accordionPanel);
-        */
     }
+
 
     private void filterStrings(String query) {
         stringsTableModel.filter(query);
@@ -189,15 +207,27 @@ public class StringSniperComponentProvider extends ComponentProvider {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
                     int row = stringsTable.rowAtPoint(e.getPoint());
-                    int col = stringsTable.columnAtPoint(e.getPoint());
                     if (row != -1) {
-                        addResult(new ResultData(1.0f,
-                                new StringData((String) stringsTable.getValueAt(row, 0), null)));
+                        StringData s = stringsTableModel.getStringData().get(row);
+
+                        float score = s.score != null ? s.score : 1.0f; // ranking
+                        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 1; // JSON confidence 1-10
+                        addResult(new ResultData(
+                            score,
+                            confidence,
+                            s.address != null ? s.address : "N/A",
+                            s.entropy != null ? s.entropy.doubleValue() : null,
+                            s
+                        ));
+
+
                         tabbedPane.setSelectedIndex(1);
                     }
                 }
             }
         });
+
+
 
         JScrollPane scrollPane = new JScrollPane(stringsTable);
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
@@ -208,9 +238,9 @@ public class StringSniperComponentProvider extends ComponentProvider {
         tabbedPane.addTab("Results", resultsPanel);
 
         // Demo data
-        addResult(new ResultData(1.0f, new StringData("test", null)));
-        addResult(new ResultData(1.0f, new StringData("string2", null)));
-        addResult(new ResultData(1.0f, new StringData("lol", null)));
+        //addResult(new ResultData(1.0f, new StringData("test", null)));
+        //addResult(new ResultData(1.0f, new StringData("string2", null)));
+        //addResult(new ResultData(1.0f, new StringData("lol", null)));
     }
 
     @Override
@@ -234,33 +264,34 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         @Override
         public int getColumnCount() {
-            return 3;
+            //Only shows two columns, string and score
+            return 2;
         }
 
         @Override
         public String getColumnName(int col) {
             switch (col) {
                 case 0: return "String";
-                case 1: return "Hash";
-                case 2: return "Score";
+                case 1: return "Score";
             }
             return "";
         }
 
-
         @Override
         public Object getValueAt(int row, int col) {
             StringData s = stringData.get(row);
+
             switch (col) {
-                case 0: return s.value;      // the extracted text SHOULD show here now
-                case 1: return s.address;    // the hash
-                case 2: return (s.score != null)
+                case 0:
+                    return s.value;
+
+                case 1:
+                    return (s.score != null) 
                             ? String.format("%.2f", s.score)
                             : "N/A";
             }
             return null;
         }
-
 
 
         @Override
@@ -304,6 +335,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
             }
         }
     }
+
     public void applyDefaultSort() {
         //Does not replace the button, just default sorts them this way for initial convienence.
         List<StringData> strings = new ArrayList<>(getStringData());
