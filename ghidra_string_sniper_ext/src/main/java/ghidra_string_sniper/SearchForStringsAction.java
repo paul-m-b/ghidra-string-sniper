@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Arrays;
 import java.util.List;
 
 import javax.swing.JOptionPane;
@@ -13,17 +12,12 @@ import docking.ActionContext;
 import docking.ComponentProvider;
 import docking.action.DockingAction;
 import docking.action.ToolBarData;
-import ghidra.app.services.ProgramManager;
-import ghidra.framework.Application;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 
-import generic.jar.ResourceFile;
 import resources.Icons;
 
 public class SearchForStringsAction extends DockingAction {
@@ -36,9 +30,7 @@ public class SearchForStringsAction extends DockingAction {
     @Override
     public void actionPerformed(ActionContext context) {
 
-        //------------------------------------------------------------
-        // Ask for API key + store in temp file
-        //------------------------------------------------------------
+        // --- API key part unchanged ---
         String tokenValue = JOptionPane.showInputDialog(
                 "Enter your Openrouter API key here:", "EnterValue"
         );
@@ -46,83 +38,49 @@ public class SearchForStringsAction extends DockingAction {
         try {
             File keyFile = File.createTempFile("SniperKey", ".txt");
             keyFile.deleteOnExit();
-
             try (FileWriter writer = new FileWriter(keyFile)) {
                 writer.write(tokenValue);
             }
-
             System.setProperty("StringSniperKeyFile", keyFile.getAbsolutePath());
-
         } catch (IOException e) {
             Msg.showError(this, null, "Key File Error", "Failed to write API key: " + e.getMessage());
         }
 
         ComponentProvider cp = context.getComponentProvider();
-        if (cp instanceof StringSniperComponentProvider) {
-
-            StringSniperComponentProvider sscp = (StringSniperComponentProvider) cp;
-            Program program = sscp.getTool().getService(ProgramManager.class).getCurrentProgram();
-            sscp.clearStrings();
-
-            //------------------------------------------------------------
-            // LOAD JSON FROM TEMP OUTPUT LOCATION
-            // GSS_matches/MATCHES.json is now written by Python into temp directory
-            //------------------------------------------------------------
-            try {
-                String tmpDir = System.getProperty("java.io.tmpdir");
-                File jsonFile = new File(tmpDir + "GSS_matches", "MATCHES.json");
-
-                if (!jsonFile.exists()) {
-                    throw new IOException("Temp MATCHES.json not found: " + jsonFile.getAbsolutePath());
-                }
-
-                String jsonText = Files.readString(jsonFile.toPath());
-                JsonObject root = JsonParser.parseString(jsonText).getAsJsonObject();
-
-                for (String key : root.keySet()) {
-                    JsonArray arr = root.getAsJsonArray(key);
-
-                    double score = arr.get(1).getAsDouble();
-
-                    // Convert score → fake address
-                    long fakeAddressValue = (long) (score * 1000);
-
-                    Address fakeAddr = program.getAddressFactory()
-                            .getDefaultAddressSpace()
-                            .getAddress(fakeAddressValue);
-
-                    sscp.addString(new StringData(key, fakeAddr));
-
-                    //Want it to be String, string
-                    //For String query and then hash?
-
-
-                    
-                }
-
-            } catch (Exception e) {
-                Msg.showError(this, null, "JSON Load Error", e.toString());
-            }
+        if (!(cp instanceof StringSniperComponentProvider)) {
+            return;
         }
 
-        //------------------------------------------------------------
-        // RUN PYTHON SCRIPT (now outputs to temp dir)
-        //------------------------------------------------------------
+        StringSniperComponentProvider sscp = (StringSniperComponentProvider) cp;
+        sscp.clearStrings();
+
         try {
-            List<String> args = Arrays.asList("arg1", "arg2");
+            String tmpDir = System.getProperty("java.io.tmpdir");
+            File resultsDir = new File(tmpDir, "GSS_Results"); // matches SOURCEGRAPH_QUERY
+            File jsonFile = new File(resultsDir, "results.json");
 
-            PythonRunner.RunResult res = PythonRunner.runSystemPython(
-                    "python/",
-                    "string_prioritize.py",
-                    args,
-                    30
-            );
+            if (!jsonFile.exists()) {
+                throw new IOException("results.json not found: " + jsonFile.getAbsolutePath());
+            }
 
-            Msg.showInfo(getClass(), cp.getComponent(), "Output", res.stdout);
+            String jsonText = Files.readString(jsonFile.toPath());
+            JsonObject root = JsonParser.parseString(jsonText).getAsJsonObject();
+
+            for (String extractedValue : root.keySet()) {
+                JsonObject valueObj = root.getAsJsonObject(extractedValue);
+                String hash = valueObj.has("hash") ? valueObj.get("hash").getAsString() : "UNKNOWN";
+                
+                // Use floatValue placeholder (or modify if you store it in results.json)
+                Float floatValue = 0.0f;
+
+                // Insert into table
+                sscp.addString(new StringData(extractedValue, hash, floatValue));
+            }
+
+            sscp.applyDefaultSort();
 
         } catch (Exception e) {
-            e.printStackTrace();
-            Msg.showInfo(getClass(), cp.getComponent(), "AAHA", "Threw an error: " + e.getMessage());
+            Msg.showError(this, null, "Error loading results.json", e.toString());
         }
     }
 

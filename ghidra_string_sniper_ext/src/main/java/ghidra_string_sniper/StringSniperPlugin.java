@@ -25,24 +25,24 @@ public class StringSniperPlugin extends ProgramPlugin {
 		super(tool);
 
 		// set up component provider
-		provider = new StringSniperComponentProvider(this, tool, getName());
+		provider = new StringSniperComponentProvider(tool, getName());
 		provider.addToTool();
 	}
 
 	@Override
 	protected void programActivated(Program activatedProgram) {
 		super.programActivated(activatedProgram);
-		if (provider != null) {
+		/*if (provider != null) {
 			provider.setProgram(activatedProgram);
-		}
+		}*/
 	}
 
 	@Override
 	protected void programDeactivated(Program deactivatedProgram) {
 		super.programDeactivated(deactivatedProgram);
-		if (provider != null) {
+		/*if (provider != null) {
 			provider.setProgram(null);
-		}
+		}*/
 	}
 }
 

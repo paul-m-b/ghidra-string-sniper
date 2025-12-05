@@ -1,45 +1,65 @@
 import requests
 import hashlib
 import json
-import time
-import sys
 import os
+from pathlib import Path
+import tempfile
+import subprocess
 
 class SOURCEGRAPH_QUERY:
     def __init__(self):
-        pass
+        # Windows temp folder for saving results
+        temp_root = self.get_windows_temp_path()
+        self.temp_dir = temp_root / "GSS_Results"
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.results_json_path = self.temp_dir / "results.json"
 
+        # Project JSON source
+        self.project_results_path = Path("./results.json")
 
-    """
-    Queries sourcegraph for public repositories containing strings in specified input file, creates folder named GSS_results
-    containing the returned file contents from sourcegraph with a small header containing the line number of the matches.
-    Also calls get_readme if 4th argument is true.
-    """
+        print(f"[INFO] results.json will be saved to: {self.results_json_path}")
+
+    # -------------------------------------------------------------------
+    @staticmethod
+    def get_windows_temp_path():
+        try:
+            win_temp = subprocess.check_output(
+                ["powershell.exe", "-NoProfile", "-Command", "[IO.Path]::GetTempPath()"],
+                text=True
+            ).strip()
+            if win_temp[1] == ":":
+                drive = win_temp[0].lower()
+                path = win_temp[2:].replace("\\", "/")
+                return Path(f"/mnt/{drive}{path}")
+            return Path(win_temp)
+        except Exception:
+            return Path(tempfile.gettempdir())
+
+    # -------------------------------------------------------------------
+    def iterate_search_strings(self):
+        # ALWAYS read from the project results.json first
+        if self.project_results_path.exists():
+            with open(self.project_results_path, 'r') as f:
+                useful_strings = json.load(f)
+        else:
+            print("[WARN] No project results.json found.")
+            useful_strings = {}
+
+        # Query Sourcegraph for each string
+        for string in useful_strings.keys():
+            self.get_repos(string, 5, useful_strings[string]["hash"])
+
+        # Save updated results.json to temp folder
+        with open(self.results_json_path, 'w') as f:
+            json.dump(useful_strings, f, indent=4)
+
+        print(f"[INFO] results.json saved to: {self.results_json_path}")
+
+    # -------------------------------------------------------------------
     def get_repos(self, query: str, match_count: str, query_hash: str) -> set():
-        """
-        with open(input_file_name, 'r') as file:
-            search_terms = []
-            for line in file:
-                stripped_line = line.strip()
-                if stripped_line:  # Only include non-empty lines
-                    # Escape any quotes in the search term
-                    escaped_term = stripped_line.replace('"', '\\"')
-                    search_terms.append(f'{escaped_term}')
-
-                if operator.lower() == "and":
-                    query = " AND ".join(search_terms)
-                elif operator.lower() == "or":
-                    query = " OR ".join(search_terms)
-                else:
-                    query = " ".join(search_terms)
-        """
-
-
         query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
-
-        url: str = "https://sourcegraph.com/.api/graphql"
-        
-        payload: dict = {
+        url = "https://sourcegraph.com/.api/graphql"
+        payload = {
             "query": '''
             query Search($query: String!) {
                 search(query: $query, version: V2) {
@@ -64,121 +84,50 @@ class SOURCEGRAPH_QUERY:
                 }
             }
             ''',
-            "variables": {
-                "query": query_filtered
-            }
+            "variables": {"query": query_filtered}
         }
 
         print(f"\nSearching for {query[:100]}")
-        
+
         try:
-            response: requests.Response = requests.post(url, json=payload, timeout=30)
+            response = requests.post(url, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
-            
+
             if 'errors' in data:
                 print(f"GraphQL Errors: {data['errors']}")
                 return set()
 
             results = data['data']['search']['results']
             result_count = results['resultCount']
-            
             repos = set()
+
             for match in results['results']:
                 if match['__typename'] == 'FileMatch' and match['repository']:
-                    print (f"{match['repository']['name']} in file {match['file']['name']}")
+                    print(f"{match['repository']['name']} in file {match['file']['name']}")
                     repos.add(match['repository']['name'])
 
-                    # List of line numbers with matches
-                    matched_lines = set(line_match['lineNumber'] for line_match in match['lineMatches'])
-
-                    matched_file: str = match['file']['name'].split('.')[0]
-                    repo_name: str = match['repository']['name'].split('/')[-1]
-                    file_name: str = repo_name + '_' + matched_file + '.txt'
-                    '''
-                    folder_name: str = query.encode("utf-8")
-                    md5_hash = hashlib.md5()
-                    md5_hash.update(folder_name)
-                    folder_name: str = str(md5_hash.hexdigest())
-                    '''
+                    matched_lines = set(lm['lineNumber'] for lm in match['lineMatches'])
+                    matched_file = match['file']['name'].split('.')[0]
+                    repo_name = match['repository']['name'].split('/')[-1]
+                    file_name = f"{repo_name}_{matched_file}.txt"
                     folder_name = query_hash
 
-                    match_msg: str = ""
-                    for num in matched_lines:
-                        match_msg += str(num+6) + " "
+                    match_msg = " ".join(str(num + 6) for num in matched_lines)
 
                     os.makedirs(f"GSS_results/{folder_name}/", exist_ok=True)
+                    with open(f"GSS_results/{folder_name}/{file_name}", 'w') as f:
+                        f.write(
+                            "-----------GSS-----------\n"
+                            f"query: {query}\n"
+                            f"{match_msg}\n"
+                            "-------------------------\n\n"
+                            f"{match['file']['content']}"
+                        )
 
-                    with open(f"GSS_results/{folder_name}/"+file_name, 'w') as file:
-                        file.write("-----------GSS-----------\n" + 
-                                  "query: " + query + "\n" + 
-                                  match_msg + "\n-------------------------\n\n" + 
-                                  match['file']['content'])
-            
             print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")
             return repos
-            
+
         except Exception as e:
             print(f"Error: {e}")
             return set()
-
-
-    def iterate_search_strings(self):
-        with open("./results.json") as file:
-            useful_strings = json.load(file)
-
-        for string in useful_strings.keys():
-            self.get_repos(string, 5, useful_strings[string]["hash"])
-
-
-"""
-Queries sourcegraph for the readmes of given repository url. Stores the content of the readme in GSS_results in a text file.
-"""
-def get_readme(repo_url: str):
-    url: str = "https://sourcegraph.com/.api/graphql"
-
-    repo_user: str = repo_url.split('/')[-2]
-    repo_name: str = repo_url.split('/')[-1]
-
-    query: str = f"repo:^github\.com/{repo_user}/{repo_name}$ file:^README(\.md|\.txt)?$"
-    
-    graphql_query: str = """
-    query SearchReadme($query: String!) {
-        search(query: $query, version: V2) {
-            results {
-                results {
-                    __typename
-                    ... on FileMatch {
-                        file {
-                            content
-                        }
-                    }
-                }
-            }
-        }
-    }
-    """
-    
-    payload: dict = {
-        "query": graphql_query,
-        "variables": {
-            "query": query
-        }
-    }
-
-    try:
-        response: Response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        results = data['data']['search']['results']
-
-        for result in results['results']:
-            with open("GSS_results/"+repo_name + " _README.txt", 'w') as file:
-                file.write(result['file']['content'])
-                print (f'Found readme for {repo_url}')
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return
-
-
