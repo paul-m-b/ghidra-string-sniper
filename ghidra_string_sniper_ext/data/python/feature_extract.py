@@ -28,20 +28,34 @@ class FEATURE_EXTRACT:
             return "NO FILE CONTENT REPORTED. ASSUME NO CODE"
 
     def extract_features(self, str_hash: str, decomp_func_path: str, source_func_path: str):
+        final_content = ""
+
         decomp_func = self.open_file(decomp_func_path, "r")
         source_func = self.open_file(source_func_path, "r")
 
+        #FUNCTION SIGNATURES
+
         system_prompt = self.open_file("cfg/featext_system.txt", "r")
         user_prompt = f"Extract features from the following functions:\nDECOMPILATION:\n{decomp_func}\n---\nOPEN-SOURCE CODE:\n{source_func}\n---"
-
         messages = [
             {"role":"system","content":system_prompt},
             {"role":"user","content":user_prompt}
         ]
-
         response = self.LLM.query_LLM(self.MODEL, messages)
-
         content = response["choices"][0]["message"]["content"]
+        final_content = final_content + content + "\n"
+
+        #VARIABLE NAMES
+
+        system_prompt = self.open_file("cfg/featext_system.txt", "r")
+        user_prompt = f"Extract features from the following functions:\nDECOMPILATION:\n{decomp_func}\n---\nOPEN-SOURCE CODE:\n{source_func}\n---"
+        messages = [
+            {"role":"system","content":system_prompt},
+            {"role":"user","content":user_prompt}
+        ]
+        response = self.LLM.query_LLM(self.MODEL, messages)
+        content = response["choices"][0]["message"]["content"]
+        final_content = final_content + content + "\n"
 
         fpath = f"GSS_decomps/{str_hash}/EXTRACTIONS.txt"
         with open(fpath, "w") as f:
