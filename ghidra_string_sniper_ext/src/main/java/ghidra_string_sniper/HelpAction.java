@@ -34,8 +34,6 @@ public class HelpAction extends DockingAction {
 	@Override
 	public void actionPerformed(ActionContext context) {
 		tabbedPane = new JTabbedPane();
-		//TODO: Add roles when project is in final steps.  Update as more features are added.
-
 		SwingUtilities.invokeLater(new Runnable(){
 			public void run(){
 				JFrame window = new JFrame("Help, Tutorial, and Misc.");
@@ -52,9 +50,8 @@ public class HelpAction extends DockingAction {
 				+ "This plugin helps you analyze strings in binaries efficiently.\n\n"
 				+ "Basic Usage:\n"
 				+ "1. Press the Refresh icon to search for strings within your current binary file.\n"
-				+ "2. View the extracted strings found in the table.\n"
-				+ "3. Double click on a string to be taken to the Results tab to see our LLM analysis as well as the repos this string appears inside of.\n\n"
-				//Change ^^ to double click or press deep research button once our prioritization and python scripts are integrated.
+				+ "2. View the extracted strings found in the table as well as the score for how useful it is.\n"
+				+ "3. Double click on a string to be taken to the Results tab to see more such as entropy, Md5 hash, and source code.\n\n"
 				+ "Tip: You can click the ascending/descending button to sort by length.");
 				tutorialText.setLineWrap(true);
 				tutorialText.setWrapStyleWord(true);
@@ -70,13 +67,10 @@ public class HelpAction extends DockingAction {
 				tabPanel.addTab("Features",featuresPage);
 				JTextArea featuresText = new JTextArea("Included features:\n\n"
 					+ "• Search for strings — Searches for all strings within your current binary file.\n"
-					+ "• Sort Strings — Sorts strings by length (Ascending by default).\n"
+					+ "• Sort Strings — Sorts strings by Match rating score (Ascending by default).\n"
 					+ "• Search Strings — Filters strings input and returns results to the table.\n"
 					+ "• Remove Strings — Removes the selected string from the table.\n"
-					+ "• Double clicking on a String — Performs analysis on the selected string, producing result to results tab.\n"
-					// ^^ Subject to change if we eventually make dedicated button for analysis			
-					+ "• Double clicking on an Address — Takes user to address location within Ghidra.\n"
-					//Will include this feature later + "• Export — Saves results to file.\n"
+					+ "• Double clicking on a String — Takes you to results tab for to review more data and source code of the string.\n"
 					+ "• Help — Displays this help window."
 				);
 				featuresText.setEditable(false);

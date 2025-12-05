@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import subprocess
 
+
 class SOURCEGRAPH_QUERY:
     def __init__(self):
         # Windows temp folder for saving results
@@ -14,7 +15,7 @@ class SOURCEGRAPH_QUERY:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.results_json_path = self.temp_dir / "results.json"
 
-        # Project JSON source
+        # Project JSON source (input)
         self.project_results_path = Path("./results.json")
 
         print(f"[INFO] results.json will be saved to: {self.results_json_path}")
@@ -22,12 +23,14 @@ class SOURCEGRAPH_QUERY:
     # -------------------------------------------------------------------
     @staticmethod
     def get_windows_temp_path():
+        """Ensure MATCHES.json is always written to Windows temp directory, even inside WSL."""
         try:
             win_temp = subprocess.check_output(
                 ["powershell.exe", "-NoProfile", "-Command", "[IO.Path]::GetTempPath()"],
                 text=True
             ).strip()
-            if win_temp[1] == ":":
+            # Convert C:\ path to WSL-style /mnt/c/... path
+            if len(win_temp) > 1 and win_temp[1] == ":":
                 drive = win_temp[0].lower()
                 path = win_temp[2:].replace("\\", "/")
                 return Path(f"/mnt/{drive}{path}")
@@ -37,9 +40,9 @@ class SOURCEGRAPH_QUERY:
 
     # -------------------------------------------------------------------
     def iterate_search_strings(self):
-        # ALWAYS read from the project results.json first
+        """Read project results.json and query Sourcegraph for each string."""
         if self.project_results_path.exists():
-            with open(self.project_results_path, 'r') as f:
+            with open(self.project_results_path, 'r', encoding='utf-8') as f:
                 useful_strings = json.load(f)
         else:
             print("[WARN] No project results.json found.")
@@ -50,13 +53,14 @@ class SOURCEGRAPH_QUERY:
             self.get_repos(string, 5, useful_strings[string]["hash"])
 
         # Save updated results.json to temp folder
-        with open(self.results_json_path, 'w') as f:
+        with open(self.results_json_path, 'w', encoding='utf-8') as f:
             json.dump(useful_strings, f, indent=4)
 
         print(f"[INFO] results.json saved to: {self.results_json_path}")
 
     # -------------------------------------------------------------------
-    def get_repos(self, query: str, match_count: str, query_hash: str) -> set():
+    def get_repos(self, query: str, match_count: str, query_hash: str) -> set:
+        """Query Sourcegraph GraphQL API for matches and save files to temp folder."""
         query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
         url = "https://sourcegraph.com/.api/graphql"
         payload = {
@@ -102,21 +106,28 @@ class SOURCEGRAPH_QUERY:
             result_count = results['resultCount']
             repos = set()
 
+            # Save files in same temp folder as results.json
+            base_output_dir = self.temp_dir / query_hash
+            base_output_dir.mkdir(parents=True, exist_ok=True)
+
             for match in results['results']:
                 if match['__typename'] == 'FileMatch' and match['repository']:
-                    print(f"{match['repository']['name']} in file {match['file']['name']}")
-                    repos.add(match['repository']['name'])
+                    repo = match['repository']['name']
+                    file = match['file']['name']
+
+                    print(f"{repo} in file {file}")
+                    repos.add(repo)
 
                     matched_lines = set(lm['lineNumber'] for lm in match['lineMatches'])
-                    matched_file = match['file']['name'].split('.')[0]
-                    repo_name = match['repository']['name'].split('/')[-1]
+                    matched_file = file.split('.')[0]
+                    repo_name = repo.split('/')[-1]
                     file_name = f"{repo_name}_{matched_file}.txt"
-                    folder_name = query_hash
 
                     match_msg = " ".join(str(num + 6) for num in matched_lines)
 
-                    os.makedirs(f"GSS_results/{folder_name}/", exist_ok=True)
-                    with open(f"GSS_results/{folder_name}/{file_name}", 'w') as f:
+                    output_path = base_output_dir / file_name
+
+                    with open(output_path, 'w', encoding='utf-8', errors='replace') as f:
                         f.write(
                             "-----------GSS-----------\n"
                             f"query: {query}\n"

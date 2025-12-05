@@ -4,6 +4,10 @@ import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 import docking.ComponentProvider;
@@ -16,14 +20,9 @@ import ghidra.app.services.GoToService;
 import ghidra.util.Msg;
 
 public class StringSniperComponentProvider extends ComponentProvider {
-    // Ghidra data
     private Program currentProgram;
-    // private StringSniperPlugin plugin; // Optional, comment if unused
 
-    // Data
     private StringTableModel stringsTableModel;
-
-    // UI
     private JTabbedPane tabbedPane;
     private JTable stringsTable;
     private JPanel resultsPanel;
@@ -50,7 +49,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         stringsTableModel.clear();
     }
 
-    // Sets the current program (optional, can comment if not needed)
     public void setProgram(Program program) {
         this.currentProgram = program;
     }
@@ -68,7 +66,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     public void addResult(ResultData result) {
-        
+
         JPanel accordionPanel = new JPanel();
         accordionPanel.setLayout(new BoxLayout(accordionPanel, BoxLayout.Y_AXIS));
 
@@ -83,7 +81,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         JLabel confidenceScore = new JLabel(
             "Confidence: " + (result.confidence >= 0 ? result.confidence : 0) + "/10"
         );
-
 
         if (result.confidence >= 7.5f) {
             confidenceScore.setForeground(Color.GREEN);
@@ -145,6 +142,38 @@ public class StringSniperComponentProvider extends ComponentProvider {
         // ---------------- LLM ASSESSMENT ----------------
         accordionContent.add(new JLabel("LLM Assessment: Pending"));
 
+        // ---------------- VIEW FILE BUTTON ----------------
+        if (!hashValue.equals("N/A")) {
+            JButton viewFileButton = new JButton("View Source File");
+            viewFileButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+            viewFileButton.addActionListener(e -> {
+                Path tempDir = Path.of(System.getProperty("java.io.tmpdir"), "GSS_Results", hashValue);
+                if (!tempDir.toFile().exists()) {
+                    JOptionPane.showMessageDialog(accordionContent, "No file found for this hash.", "File Not Found", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+
+                try {
+                    File[] files = tempDir.toFile().listFiles();
+                    if (files != null && files.length > 0) {
+                        
+                        File fileToShow = files[0];
+                        String content = Files.readString(fileToShow.toPath());
+                        JTextArea textArea = new JTextArea(content);
+                        textArea.setEditable(false);
+                        JScrollPane scrollPane = new JScrollPane(textArea);
+                        scrollPane.setPreferredSize(new Dimension(800, 600));
+                        JOptionPane.showMessageDialog(accordionContent, scrollPane, fileToShow.getName(), JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(accordionContent, "No file found for this hash.", "File Not Found", JOptionPane.WARNING_MESSAGE);
+                    }
+                } catch (IOException ex) {
+                    Msg.showError(StringSniperComponentProvider.this, null, "File Read Error", ex.getMessage(), ex);
+                }
+            });
+            accordionContent.add(viewFileButton);
+        }
+
         // ---------------- COLLAPSE / EXPAND ----------------
         accordionContent.setVisible(false);
         accordionButton.addActionListener(e -> {
@@ -158,7 +187,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         accordionPanel.add(accordionContent);
         resultsPanel.add(accordionPanel);
     }
-
 
     private void filterStrings(String query) {
         stringsTableModel.filter(query);
@@ -210,8 +238,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     if (row != -1) {
                         StringData s = stringsTableModel.getStringData().get(row);
 
-                        float score = s.score != null ? s.score : 1.0f; // ranking
-                        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 1; // JSON confidence 1-10
+                        float score = s.score != null ? s.score : 1.0f;
+                        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 1;
                         addResult(new ResultData(
                             score,
                             confidence,
@@ -220,14 +248,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
                             s
                         ));
 
-
                         tabbedPane.setSelectedIndex(1);
                     }
                 }
             }
         });
-
-
 
         JScrollPane scrollPane = new JScrollPane(stringsTable);
         stringsPanel.add(scrollPane, BorderLayout.CENTER);
@@ -236,11 +261,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
         tabbedPane.addTab("Results", resultsPanel);
-
-        // Demo data
-        //addResult(new ResultData(1.0f, new StringData("test", null)));
-        //addResult(new ResultData(1.0f, new StringData("string2", null)));
-        //addResult(new ResultData(1.0f, new StringData("lol", null)));
     }
 
     @Override
@@ -264,7 +284,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         @Override
         public int getColumnCount() {
-            //Only shows two columns, string and score
             return 2;
         }
 
@@ -272,7 +291,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         public String getColumnName(int col) {
             switch (col) {
                 case 0: return "String";
-                case 1: return "Score";
+                case 1: return "LLM Rating Score";
             }
             return "";
         }
@@ -280,19 +299,12 @@ public class StringSniperComponentProvider extends ComponentProvider {
         @Override
         public Object getValueAt(int row, int col) {
             StringData s = stringData.get(row);
-
             switch (col) {
-                case 0:
-                    return s.value;
-
-                case 1:
-                    return (s.score != null) 
-                            ? String.format("%.2f", s.score)
-                            : "N/A";
+                case 0: return s.value;
+                case 1: return (s.score != null) ? String.format("%.2f", s.score) : "N/A";
             }
             return null;
         }
-
 
         @Override
         public boolean isCellEditable(int row, int col) {
@@ -324,8 +336,17 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     }
                 }
             }
+
+            // --- sort after filtering ---
+            Comparator<StringData> comparator = Comparator
+                    .comparing((StringData s) -> s.score == null ? Float.NEGATIVE_INFINITY : s.score)
+                    .thenComparing(s -> s.value == null ? "" : s.value);
+            comparator = comparator.reversed(); // highest score first
+            stringData.sort(comparator);
+
             fireTableDataChanged();
         }
+
 
         public void removeRow(int row) {
             if (row >= 0 && row < stringData.size()) {
@@ -337,24 +358,22 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     public void applyDefaultSort() {
-        //Does not replace the button, just default sorts them this way for initial convienence.
         List<StringData> strings = new ArrayList<>(getStringData());
 
         Comparator<StringData> comparator = Comparator
                 .comparing((StringData s) -> s.score == null ? Float.NEGATIVE_INFINITY : s.score)
                 .thenComparing(s -> s.value == null ? "" : s.value);
 
-        // Default behavior: highest score first
-        comparator = comparator.reversed();
+        comparator = comparator.reversed(); // highest score first
 
-        strings.sort(comparator);
+        strings.sort(comparator); // SORTS BEFORE RE-ADDING
 
         getStringData().clear();
         getStringData().addAll(strings);
         getStringTableModel().fireTableDataChanged();
     }
 
-    // ---------------- Navigation ----------------
+
     private void navigateToAddress(String addressString) {
         if (currentProgram == null) {
             Msg.showError(this, null, "Navigation Error", "No program is currently open.");

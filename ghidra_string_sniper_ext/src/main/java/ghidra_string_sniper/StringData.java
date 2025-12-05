@@ -9,6 +9,7 @@ public class StringData {
 	public Float entropy;
 	
 
+    //Not sure if we need the two below but code works so I'm not changing it
     // Original 2-argument constructor (rest of project depends on this)
     public StringData(String value, String address) {
         this.value = value;
