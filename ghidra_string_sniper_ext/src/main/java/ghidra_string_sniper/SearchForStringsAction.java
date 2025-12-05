@@ -30,7 +30,7 @@ public class SearchForStringsAction extends DockingAction {
     @Override
     public void actionPerformed(ActionContext context) {
 
-        // --- API key part unchanged ---
+        // ---- API KEY code unchanged ----
         String tokenValue = JOptionPane.showInputDialog(
                 "Enter your Openrouter API key here:", "EnterValue"
         );
@@ -56,33 +56,66 @@ public class SearchForStringsAction extends DockingAction {
 
         try {
             String tmpDir = System.getProperty("java.io.tmpdir");
-            File resultsDir = new File(tmpDir, "GSS_Results"); // matches SOURCEGRAPH_QUERY
-            File jsonFile = new File(resultsDir, "results.json");
 
-            if (!jsonFile.exists()) {
-                throw new IOException("results.json not found: " + jsonFile.getAbsolutePath());
+            // *** Get results.json ***
+            File resultsDir = new File(tmpDir, "GSS_Results");
+            File resultsFile = new File(resultsDir, "results.json");
+
+            if (!resultsFile.exists()) {
+                throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
             }
 
-            String jsonText = Files.readString(jsonFile.toPath());
-            JsonObject root = JsonParser.parseString(jsonText).getAsJsonObject();
+            String resultsText = Files.readString(resultsFile.toPath());
+            JsonObject resultsRoot = JsonParser.parseString(resultsText).getAsJsonObject();
 
-            for (String extractedValue : root.keySet()) {
-                JsonObject valueObj = root.getAsJsonObject(extractedValue);
-                String hash = valueObj.has("hash") ? valueObj.get("hash").getAsString() : "UNKNOWN";
-                
-                // Use floatValue placeholder (or modify if you store it in results.json)
-                Float floatValue = 0.0f;
 
-                // Insert into table
+            // *** Get MATCHES.json (has confidence scores) ***
+            File matchesDir = new File(tmpDir, "GSS_matches");
+            File matchesFile = new File(matchesDir, "MATCHES.json");
+
+            if (!matchesFile.exists()) {
+                throw new IOException("MATCHES.json not found: " + matchesFile.getAbsolutePath());
+            }
+
+            String matchesText = Files.readString(matchesFile.toPath());
+            JsonObject matchesRoot = JsonParser.parseString(matchesText).getAsJsonObject();
+
+
+            // ==== MERGE PHASE ====
+            for (String extractedValue : resultsRoot.keySet()) {
+
+                JsonObject valObj = resultsRoot.getAsJsonObject(extractedValue);
+
+                // hash from results.json
+                String hash = valObj.has("hash") ? valObj.get("hash").getAsString() : null;
+
+                if (hash == null) {
+                    Msg.showWarn(this, null, "Missing Hash", "No hash for: " + extractedValue);
+                    continue;
+                }
+
+                // get confidence from MATCHES.json
+                float floatValue = 0.0f;
+
+                if (matchesRoot.has(hash)) {
+                    JsonArray arr = matchesRoot.getAsJsonArray(hash);
+                    if (arr.size() > 1) {
+                        floatValue = arr.get(1).getAsFloat();
+                    }
+                } else {
+                    Msg.showWarn(this, null, "Missing Score", "No MATCHES.json entry for hash: " + hash);
+                }
+
+                // Add to the UI table
                 sscp.addString(new StringData(extractedValue, hash, floatValue));
             }
 
             sscp.applyDefaultSort();
 
         } catch (Exception e) {
-            Msg.showError(this, null, "Error loading results.json", e.toString());
+            Msg.showError(this, null, "Error loading data", e.toString());
         }
-    }
+}
 
     @Override
     public boolean isEnabledForContext(ActionContext context) {
