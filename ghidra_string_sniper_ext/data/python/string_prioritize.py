@@ -389,3 +389,113 @@ class STRING_PRIORITIZE:
         s = s.replace("\\n","").replace("\\t","").replace("\\r","")
         return re.sub(r"\s+","",s)
 
+
+"""
+Since more changes to string_prioritize can easily decrease its effectiveness,
+a comprehensive testing function will be helpful when comaring different versions
+of string prioritize.
+"""
+def analyze_string_prioritization(binpath: str = None, use_stdin: bool = False) -> dict:
+    
+    analyzer = STRING_PRIORITIZE()
+    results = {
+        "class_configuration": {
+            "model": analyzer.MODEL,
+            "max_string_count": analyzer.MAX_STRING_COUNT,
+            "max_depth": analyzer.MAX_DEPTH,
+            "max_retries": analyzer.MAX_RETRIES
+        },
+        "processing_stages": {},
+        "final_results": {},
+        "metrics": {},
+        "recommendations": []
+    }
+    
+    # Stage 1: String Extraction
+    print("=" * 80)
+    print("STAGE 1: STRING EXTRACTION")
+    print("=" * 80)
+    
+    if use_stdin:
+        print("Reading strings from stdin...")
+        raw_strings = analyzer.get_strings_stdin()
+    elif binpath:
+        print(f"Extracting strings from binary: {binpath}")
+        raw_strings = analyzer.get_strings(binpath)
+    else:
+        print("No input source specified. Using Ghidra method.")
+        if not binpath:
+            print("ERROR: Binary path required for Ghidra analysis")
+            return results
+        raw_strings = analyzer.get_ghidra_strings(binpath)
+    
+    results["processing_stages"]["raw_extraction"] = {
+        "count": len(raw_strings),
+        "sample_strings": raw_strings[:10] if raw_strings else []
+    }
+    
+    print(f"Extracted {len(raw_strings)} strings")
+    if raw_strings:
+        print(f"Sample: {raw_strings[:5]}")
+    
+    # Stage 2: Calculate Shannon Entropy
+    print("\n" + "=" * 80)
+    print("STAGE 2: SHANNON ENTROPY CALCULATION")
+    print("=" * 80)
+    
+    entropy_dict = {}
+    for string in raw_strings:
+        entropy_dict[string] = analyzer.shannon_entropy(string)
+    
+    sorted_by_entropy = sorted(entropy_dict.items(), key=lambda x: x[1], reverse=True)
+    
+    results["processing_stages"]["entropy_analysis"] = {
+        "entropy_range": {
+            "min": min(entropy_dict.values()) if entropy_dict else 0,
+            "max": max(entropy_dict.values()) if entropy_dict else 0,
+            "average": sum(entropy_dict.values()) / len(entropy_dict) if entropy_dict else 0
+        },
+        "top_10_high_entropy": sorted_by_entropy[:10],
+        "bottom_10_low_entropy": sorted_by_entropy[-10:] if len(sorted_by_entropy) > 10 else sorted_by_entropy
+    }
+    
+    print(f"Entropy Range: {results['processing_stages']['entropy_analysis']['entropy_range']}")
+    print("Top 5 High Entropy Strings:")
+    for string, entropy in sorted_by_entropy[:5]:
+        print(f"  {entropy:.3f}: '{string[:50]}...'")
+    
+    # Stage 3: Identify OpenSource Strings
+    print("\n" + "=" * 80)
+    print("STAGE 3: OPENSOURCE STRING DETECTION")
+    print("=" * 80)
+    
+    test_strings = raw_strings.copy()
+    opensource_matches = analyzer.get_opensource_strings(test_strings)
+    
+    results["processing_stages"]["opensource_detection"] = {
+        "opensource_strings_found": opensource_matches,
+        "count": len(opensource_matches),
+        "remaining_strings": len(test_strings)
+    }
+    
+    print(f"Found {len(opensource_matches)} opensource-related strings")
+    for string in opensource_matches[:5]:
+        print(f"  - {string}")
+    if len(opensource_matches) > 5:
+        print(f"  ... and {len(opensource_matches) - 5} more")
+    
+    # Stage 4: Common String Removal
+    print("\n" + "=" * 80)
+    print("STAGE 4: COMMON STRING FILTERING")
+    print("=" * 80)
+    
+    after_common = analyzer.remove_common_strings(raw_strings)
+    common_removed = len(raw_strings) - len(after_common)
+    
+    results["processing_stages"]["common_filtering"] = {
+        "strings_removed": common_removed,
+        "remaining_count": len(after_common),
+        "removal_percentage": (common_removed / len(raw_strings) * 100) if raw_strings else 0
+    }
+    
+    print(f"Removed {common_removed} common strings ({results['processing_stages']['common_filtering']['removal_percentage']:.1f}%)")
