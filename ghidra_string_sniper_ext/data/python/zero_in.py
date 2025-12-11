@@ -88,3 +88,48 @@ class ZERO_IN():
     '''
     def function_match(self):
         pass
+
+    '''
+    Optional: Get read me's so user can read them and decide on if a repo should be downloaded or not
+    '''
+    def get_readme(org, repo_name, output_path=None):
+        url = f"https://api.github.com/repos/{org}/{repo_name}/readme"
+        
+        headers = {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "Python-Requests"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            content_encoded = data.get("content", "")
+            content_decoded = base64.b64decode(content_encoded).decode("utf-8")
+            
+            download_url = data.get("download_url", "")
+            
+            # If output_path is provided, save to file
+            if output_path:
+                os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+                
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(content_decoded)
+                
+                print(f"README saved to: {output_path}")
+                return output_path
+            else:
+                return content_decoded
+                
+        except requests.exceptions.HTTPError as e:
+            print(f"HTTP Error: {e}")
+            if response.status_code == 404:
+                print(f"Repository {org}/{repo_name} not found, or README doesn't exist")
+            elif response.status_code == 403:
+                print("Rate limit exceeded")
+            return None
+        except Exception as e:
+            print(f"Error: {e}")
+            return None
