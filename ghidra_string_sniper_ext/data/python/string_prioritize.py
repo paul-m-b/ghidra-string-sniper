@@ -499,3 +499,61 @@ def analyze_string_prioritization(binpath: str = None, use_stdin: bool = False) 
     }
     
     print(f"Removed {common_removed} common strings ({results['processing_stages']['common_filtering']['removal_percentage']:.1f}%)")
+    # Stage 5: Entropy Filtering
+    print("\n" + "=" * 80)
+    print("STAGE 5: ENTROPY-BASED FILTERING")
+    print("=" * 80)
+    
+    after_entropy_filter = analyzer.filter_by_entropy(after_common)
+    entropy_filtered = len(after_common) - len(after_entropy_filter)
+    
+    results["processing_stages"]["entropy_filtering"] = {
+        "strings_removed": entropy_filtered,
+        "remaining_count": len(after_entropy_filter),
+        "filter_range": "2.0 - 5.5",
+        "filtered_strings_examples": [
+            (s, analyzer.shannon_entropy(s)) 
+            for s in set(after_common) - set(after_entropy_filter)
+        ][:5]
+    }
+    
+    print(f"Removed {entropy_filtered} strings outside entropy range 2.0-5.5")
+    if results['processing_stages']['entropy_filtering']['filtered_strings_examples']:
+        print("Examples of filtered strings:")
+        for string, entropy in results['processing_stages']['entropy_filtering']['filtered_strings_examples']:
+            print(f"  {entropy:.3f}: '{string[:30]}...'")
+    
+    # Stage 6: Character Distribution Analysis
+    print("\n" + "=" * 80)
+    print("STAGE 6: CHARACTER DISTRIBUTION FILTERING")
+    print("=" * 80)
+    
+    after_char_dist = analyzer.has_reasonable_character_distribution(after_entropy_filter)
+    char_filtered = len(after_entropy_filter) - len(after_char_dist)
+    
+    # Analyze character distributions
+    char_stats = []
+    for string in after_entropy_filter:
+        alpha_count = sum(1 for c in string if c.isalpha())
+        digit_count = sum(1 for c in string if c.isdigit())
+        special_count = len(string) - alpha_count - digit_count
+        alpha_ratio = alpha_count / len(string) if string else 0
+        special_ratio = special_count / len(string) if string else 0
+        char_stats.append({
+            "string": string,
+            "alpha_ratio": alpha_ratio,
+            "special_ratio": special_ratio,
+            "length": len(string)
+        })
+    
+    results["processing_stages"]["character_distribution"] = {
+        "strings_removed": char_filtered,
+        "remaining_count": len(after_char_dist),
+        "average_alpha_ratio": sum(s["alpha_ratio"] for s in char_stats) / len(char_stats) if char_stats else 0,
+        "average_special_ratio": sum(s["special_ratio"] for s in char_stats) / len(char_stats) if char_stats else 0,
+        "character_statistics": char_stats[:10]  # First 10 for analysis
+    }
+    
+    print(f"Removed {char_filtered} strings with poor character distribution")
+    print(f"Average alpha ratio: {results['processing_stages']['character_distribution']['average_alpha_ratio']:.3f}")
+    print(f"Average special char ratio: {results['processing_stages']['character_distribution']['average_special_ratio']:.3f}")
