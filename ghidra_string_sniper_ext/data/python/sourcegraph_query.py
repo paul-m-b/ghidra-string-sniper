@@ -41,7 +41,7 @@ class SOURCEGRAPH_QUERY:
     containing the returned file contents from sourcegraph with a small header containing the line number of the matches.
     Also calls get_readme if 4th argument is true.
     """
-    def get_repos(self, query: str, match_count: str, query_hash: str) -> set():
+    def get_repos(self, query: str, match_count: str, query_hash: str):
         """
         with open(input_file_name, 'r') as file:
             search_terms = []
@@ -164,7 +164,7 @@ class SOURCEGRAPH_QUERY:
     params: SourcegraphQuery object containing search parameters
     Returns: Formatted Sourcegraph search query string
     '''
-    def build_sourcegraph_query(params: SourcegraphQuery) -> str:
+    def build_sourcegraph_query(self, params: SourcegraphQuery):
         query_parts = []
         
         if params.context:
@@ -203,6 +203,68 @@ class SOURCEGRAPH_QUERY:
         query_parts.append(params.query)
         
         return " ".join(query_parts)
+    
+
+    '''
+    Convenience function to create a Sourcegraph query.
+        
+    Args in order:
+        query: The main search query string
+        context: Search context (e.g., "global", "my-org")
+        langs: List of programming languages to filter by
+        search_type: Type of search (file, repo, commit, symbol, diff)
+        repos: List of repository patterns to search in
+        files: List of file patterns to search in
+        select: Field to select in results
+        count: Number of results to return
+        case_sensitive: Whether search is case-sensitive
+        pattern_type: Type of pattern matching (literal, regexp, structural)
+            
+    Returns:
+        Formatted Sourcegraph search query string
+    '''
+    def create_sourcegraph_query(
+        self,
+        query: str,
+        context: Optional[str] = None,
+        langs: Optional[List[str]] = None,
+        search_type: Optional[str] = None,
+        repos: Optional[List[str]] = None,
+        files: Optional[List[str]] = None,
+        select: Optional[str] = None,
+        count: Optional[int] = None,
+        case_sensitive: Optional[bool] = None,
+        pattern_type: Optional[str] = None
+    ):
+        type_enum = None
+        if search_type:
+            try:
+                type_enum = SearchType(search_type.lower())
+            except ValueError:
+                valid_types = [t.value for t in SearchType]
+                raise ValueError(f"Invalid search type. Must be one of: {valid_types}")
+        
+        if isinstance(langs, str):
+            langs = [langs]
+        if isinstance(repos, str):
+            repos = [repos]
+        if isinstance(files, str):
+            files = [files]
+        
+        params = SourcegraphQuery(
+            query=query,
+            context=context,
+            langs=langs,
+            type=type_enum,
+            repos=repos,
+            files=files,
+            select=select,
+            count=count,
+            case_sensitive=case_sensitive,
+            pattern_type=pattern_type
+        )
+        
+        return self.build_sourcegraph_query(self, params)
         
 
 
