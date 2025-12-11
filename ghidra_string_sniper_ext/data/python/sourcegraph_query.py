@@ -1,9 +1,35 @@
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
+from enum import Enum
 import requests
 import hashlib
 import json
 import time
 import sys
 import os
+
+
+class SearchType(Enum):
+    """Sourcegraph search types"""
+    FILE = "file"
+    REPO = "repo"
+    COMMIT = "commit"
+    SYMBOL = "symbol"
+    DIFF = "diff"
+
+@dataclass
+class SourcegraphQuery:
+    """Data class for Sourcegraph query parameters"""
+    query: str
+    context: Optional[str] = None
+    langs: Optional[List[str]] = None
+    type: Optional[SearchType] = None
+    repos: Optional[List[str]] = None
+    files: Optional[List[str]] = None
+    select: Optional[str] = None
+    count: Optional[int] = None
+    case_sensitive: Optional[bool] = None
+    pattern_type: Optional[str] = None  # "literal", "regexp", "structural"
 
 class SOURCEGRAPH_QUERY:
     def __init__(self):
@@ -36,6 +62,8 @@ class SOURCEGRAPH_QUERY:
 
 
         query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
+
+        
 
         url: str = "https://sourcegraph.com/.api/graphql"
         
@@ -129,6 +157,53 @@ class SOURCEGRAPH_QUERY:
 
         for string in useful_strings.keys():
             self.get_repos(string, 5, useful_strings[string]["hash"])
+    
+
+    '''
+    Builds a Sourcegraph search query from parameters.
+    params: SourcegraphQuery object containing search parameters
+    Returns: Formatted Sourcegraph search query string
+    '''
+    def build_sourcegraph_query(params: SourcegraphQuery) -> str:
+        query_parts = []
+        
+        if params.context:
+            query_parts.append(f"context:{params.context}")
+        
+        # can be multiple
+        if params.langs:
+            for lang in params.langs:
+                query_parts.append(f"lang:{lang}")
+        
+        if params.type:
+            query_parts.append(f"type:{params.type.value}")
+        
+        if params.repos:
+            for repo in params.repos:
+                query_parts.append(f"repo:{repo}")
+        
+        # can be multiple
+        if params.files:
+            for file_pattern in params.files:
+                query_parts.append(f"file:{file_pattern}")
+        
+        if params.select:
+            query_parts.append(f"select:{params.select}")
+        
+        if params.count:
+            query_parts.append(f"count:{params.count}")
+        
+        if params.case_sensitive is not None:
+            case_val = "yes" if params.case_sensitive else "no"
+            query_parts.append(f"case:{case_val}")
+        
+        if params.pattern_type:
+            query_parts.append(f"patterntype:{params.pattern_type}")
+        
+        query_parts.append(params.query)
+        
+        return " ".join(query_parts)
+        
 
 
 """
