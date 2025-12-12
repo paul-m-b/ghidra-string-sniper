@@ -557,3 +557,62 @@ def analyze_string_prioritization(binpath: str = None, use_stdin: bool = False) 
     print(f"Removed {char_filtered} strings with poor character distribution")
     print(f"Average alpha ratio: {results['processing_stages']['character_distribution']['average_alpha_ratio']:.3f}")
     print(f"Average special char ratio: {results['processing_stages']['character_distribution']['average_special_ratio']:.3f}")
+
+    # Stage 7: Pattern Filtering
+    print("\n" + "=" * 80)
+    print("STAGE 7: PATTERN-BASED FILTERING")
+    print("=" * 80)
+    
+    after_patterns = analyzer.filter_patterns(after_char_dist)
+    pattern_filtered = len(after_char_dist) - len(after_patterns)
+    
+    results["processing_stages"]["pattern_filtering"] = {
+        "strings_removed": pattern_filtered,
+        "remaining_count": len(after_patterns),
+        "patterns_applied": [
+            "All lowercase sequential",
+            "All uppercase sequential",
+            "All digits",
+            "All printable ASCII in order",
+            "All printable ASCII ranges",
+            "Repeated short sequences"
+        ]
+    }
+    
+    print(f"Removed {pattern_filtered} strings matching useless patterns")
+    
+    # Stage 8: Final Prioritization
+    print("\n" + "=" * 80)
+    print("STAGE 8: FINAL PRIORITIZATION")
+    print("=" * 80)
+    
+    final_shannon_list = analyzer.get_shannon_list(after_patterns)
+    final_strings = final_shannon_list[:analyzer.MAX_STRING_COUNT]
+    
+    results["processing_stages"]["final_prioritization"] = {
+        "shannon_sorted_list": final_shannon_list,
+        "top_strings_selected": final_strings,
+        "entropy_values": {s: analyzer.shannon_entropy(s) for s in final_strings}
+    }
+    
+    print(f"Selected top {len(final_strings)} strings by Shannon entropy:")
+    for i, string in enumerate(final_strings, 1):
+        entropy = analyzer.shannon_entropy(string)
+        print(f"{i:2d}. [{entropy:.3f}] '{string[:60]}{'...' if len(string) > 60 else ''}'")
+    
+    # Calculate Overall Metrics
+    results["metrics"] = {
+        "total_processing_pipeline": {
+            "input_strings": len(raw_strings),
+            "output_strings": len(final_strings),
+            "reduction_percentage": ((len(raw_strings) - len(final_strings)) / len(raw_strings) * 100) if raw_strings else 0,
+            "stages_applied": len(results["processing_stages"])
+        },
+        "efficiency_metrics": {
+            "strings_per_stage": [
+                {"stage": stage, "count": data.get("remaining_count", data.get("count", 0))}
+                for stage, data in results["processing_stages"].items()
+            ]
+        }
+    }
+    
