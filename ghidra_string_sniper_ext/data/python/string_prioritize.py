@@ -616,3 +616,61 @@ def analyze_string_prioritization(binpath: str = None, use_stdin: bool = False) 
         }
     }
     
+    # Generate Recommendations
+    recommendations = []
+    
+    # Check entropy filtering effectiveness
+    entropy_range = results["processing_stages"]["entropy_analysis"]["entropy_range"]
+    if entropy_range["min"] < 1.0 or entropy_range["max"] > 6.0:
+        recommendations.append(
+            "Consider adjusting entropy filter bounds based on observed range "
+            f"(current: 2.0-5.5, observed: {entropy_range['min']:.2f}-{entropy_range['max']:.2f})"
+        )
+    
+    # Check character distribution thresholds
+    char_stats = results["processing_stages"]["character_distribution"]
+    if char_stats["average_alpha_ratio"] < 0.2:
+        recommendations.append(
+            f"Low average alpha ratio ({char_stats['average_alpha_ratio']:.3f}). "
+            "Consider relaxing alpha ratio threshold from 0.3 to 0.2"
+        )
+    
+    # Check for potential opensource library detection improvements
+    if len(results["processing_stages"]["opensource_detection"]["opensource_strings_found"]) > 0:
+        recommendations.append(
+            "Opensource strings detected. Consider adding opensource string analysis "
+            "to the prioritization pipeline"
+        )
+    
+    # Check pattern filtering efficiency
+    pattern_filtered = results["processing_stages"]["pattern_filtering"]["strings_removed"]
+    if pattern_filtered / len(raw_strings) > 0.3:
+        recommendations.append(
+            f"Pattern filtering removed {pattern_filtered} strings ({pattern_filtered/len(raw_strings)*100:.1f}%). "
+            "Review patterns to ensure not filtering meaningful strings"
+        )
+    
+    results["recommendations"] = recommendations
+    
+    print("\n" + "=" * 80)
+    print("RECOMMENDATIONS FOR IMPROVEMENT")
+    print("=" * 80)
+    
+    if recommendations:
+        for i, rec in enumerate(recommendations, 1):
+            print(f"{i}. {rec}")
+    else:
+        print("No specific recommendations. Current configuration appears optimal.")
+    
+    # Summary
+    print("\n" + "=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    
+    metrics = results["metrics"]["total_processing_pipeline"]
+    print(f"Input Strings: {metrics['input_strings']}")
+    print(f"Output Strings: {metrics['output_strings']}")
+    print(f"Reduction: {metrics['reduction_percentage']:.1f}%")
+    print(f"Processing Stages: {metrics['stages_applied']}")
+    
+    return results
