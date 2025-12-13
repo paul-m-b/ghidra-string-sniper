@@ -153,6 +153,67 @@ class STRING_PRIORITIZE:
                 
         return filtered
 
+
+    '''
+    Filter strings based on their probability of being natural language.
+    Uses character n-gram statistics.
+    '''
+    def filter_by_language_probability(self, string_list: list, threshold: float = 0.3) -> list:
+        # Common English character trigram probabilities (simplified)
+        # In practice, you'd use a more comprehensive model
+        common_english = {
+            'the', 'and', 'ing', 'ion', 'ent', 'her', 'tha', 'for', 'hat',
+            'you', 'are', 'was', 'thi', 'ate', 'ver', 'ith', 'all', 'ere'
+        }
+        
+        # Common programming patterns to deprioritize
+        code_patterns = [
+            r'^[a-zA-Z_][a-zA-Z0-9_]*$',
+            r'^[A-Z][A-Z0-9_]+$',  # Constants/MACROS
+            r'^[a-z]+_[a-z]+$',
+            r'^[a-z]+[A-Z][a-z]+$',
+        ]
+        
+        def calculate_language_score(string: str) -> float:
+            if len(string) < 3:
+                return 0.0
+            
+            string_lower = string.lower()
+            
+            trigram_matches = 0
+            for i in range(len(string_lower) - 2):
+                trigram = string_lower[i:i+3]
+                if trigram in common_english:
+                    trigram_matches += 1
+            
+            trigram_score = trigram_matches / max(1, len(string_lower) - 2)
+            
+            code_penalty = 0.0
+            for pattern in code_patterns:
+                if re.match(pattern, string):
+                    code_penalty = 0.5
+                    break
+            
+            vowels = sum(1 for c in string_lower if c in 'aeiou')
+            vowel_ratio = vowels / len(string) if string else 0
+            
+            final_score = (trigram_score * 0.4 + 
+                        min(vowel_ratio * 2, 1.0) * 0.3 +
+                        (1 - code_penalty) * 0.3)
+            
+            return final_score
+        
+        filtered = []
+        for string in string_list:
+            score = calculate_language_score(string)
+            if score >= threshold:
+                filtered.append(string)
+            else:
+                logging.debug(f"Low language score ({score:.2f}): {string}")
+        
+        return filtered
+
+
     '''
     For now, uses strings for ease of development/testing.
     TODO: Connect with ghidra to get strings from it.
