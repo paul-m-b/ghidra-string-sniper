@@ -674,3 +674,60 @@ def analyze_string_prioritization(binpath: str = None, use_stdin: bool = False) 
     print(f"Processing Stages: {metrics['stages_applied']}")
     
     return results
+
+# Example usage function
+def run_complete_analysis():
+    """
+    Example function showing how to use the analysis tools.
+    """
+    print("STRING_PRIORITIZE CLASS ANALYSIS TOOL")
+    print("=" * 60)
+    
+    # Option 1: Analyze with binary file
+    # results = analyze_string_prioritization(binpath="/path/to/binary")
+    
+    # Option 2: Analyze with stdin input
+    # print("Enter strings (Ctrl+D to finish):")
+    # results = analyze_string_prioritization(use_stdin=True)
+    
+    # Option 3: Analyze existing STRING_PRIORITIZE instance
+    analyzer = STRING_PRIORITIZE()
+    
+    # Sample strings to demonstrate functionality
+    test_strings = [
+        "abcdefghijklmnopqrstuvwxyz",  # Should be filtered by remove_common_strings
+        "HelloWorld123!",  # Good entropy and distribution
+        "SSL_connect",  # Opensource detection
+        "AAAAAAAAAAAA",  # Pattern filtering
+        "password123",  # Reasonable string
+        "!@#$%^&*()",  # High special char ratio
+        "qwertyuiop",  # Common pattern
+        "http://api.example.com/v1/auth",  # Interesting string
+        "ERROR: File not found",  # Meaningful text
+        "1234567890",  # All digits - should be filtered
+    ]
+    
+    print("\nTesting with sample strings...")
+    
+    stage1 = analyzer.remove_common_strings(test_strings)
+    print(f"After common string removal: {len(stage1)} strings remain")
+    
+    stage2 = analyzer.filter_patterns(stage1)
+    print(f"After pattern filtering: {len(stage2)} strings remain")
+    
+    stage3 = analyzer.filter_by_entropy(stage2)
+    print(f"After entropy filtering: {len(stage3)} strings remain")
+    
+    stage4 = analyzer.has_reasonable_character_distribution(stage3)
+    print(f"After character distribution: {len(stage4)} strings remain")
+    
+    stage5 = analyzer.get_shannon_list(stage4)
+    print(f"After Shannon sorting: {len(stage5)} strings sorted")
+    
+    final = stage5[:analyzer.MAX_STRING_COUNT]
+    print(f"\nFinal prioritized strings:")
+    for string in final:
+        entropy = analyzer.shannon_entropy(string)
+        print(f"  [{entropy:.3f}] {string}")
+    
+    return analyzer
