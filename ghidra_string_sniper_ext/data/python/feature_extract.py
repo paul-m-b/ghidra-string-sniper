@@ -15,7 +15,7 @@ a certain confidence value during the function matching process.
 
 class FEATURE_EXTRACT:
     def __init__(self):
-        self.MODEL="openai/gpt-oss-20b:free"
+        self.MODEL="openai/gpt-4o-mini"
         self.LLM = LLM_INTERACT()
         self.CONFIDENCE_THRESHOLD = 8
 

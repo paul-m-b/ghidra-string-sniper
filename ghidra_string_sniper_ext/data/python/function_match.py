@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 
 class FUNCTION_MATCH:
     def __init__(self):
-        self.MODEL= "openai/gpt-oss-20b:free"
+        self.MODEL = "openai/gpt-4o-mini"
         self.LLM = LLM_INTERACT()
         self.MAX_RETRIES = 3
 
@@ -39,7 +39,6 @@ class FUNCTION_MATCH:
         ]
 
         response = self.LLM.query_LLM(self.MODEL, messages)
-
 
         try:
             rating = response["choices"][0]["message"]["content"]
