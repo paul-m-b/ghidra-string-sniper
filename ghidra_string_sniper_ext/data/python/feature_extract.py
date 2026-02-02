@@ -1,4 +1,5 @@
 from llm_interact import LLM_INTERACT
+from gss_paths import matches_json_path, decomps_dir
 import logging
 import json
 import time
@@ -32,7 +33,7 @@ class FEATURE_EXTRACT:
     # ------------------------------------------------------------
     def open_file(self, path: str, mode: str) -> str:
         try:
-            with open(path, mode) as f:
+            with open(path, mode, encoding="utf-8", errors="replace") as f:
                 return f.read()
         except Exception as e:
             logging.critical(f"Error opening `{path}`: {e}")
@@ -137,7 +138,7 @@ class FEATURE_EXTRACT:
     def iterate_results(self):
         logging.info("Starting feature extraction...")
 
-        match_file_content = self.open_file("GSS_results/MATCHES.json", "r")
+        match_file_content = self.open_file(str(matches_json_path()), "r")
 
         try:
             matches = json.loads(match_file_content)
@@ -151,7 +152,7 @@ class FEATURE_EXTRACT:
             if confidence < self.CONFIDENCE_THRESHOLD:
                 continue
 
-            decomp_path = f"GSS_decomps/{str_hash}/decomp.txt"
+            decomp_path = str(decomps_dir() / str_hash / "decomp.txt")
 
             logging.info(f"Analyzing {source_path}")
             self.extract_features(str_hash, decomp_path, source_path)

@@ -27,6 +27,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private JTable stringsTable;
     private JPanel resultsPanel;
     private JPanel currentResultPanel;
+    private Path lastOutputDir;
 
     public StringSniperComponentProvider(PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
@@ -51,6 +52,18 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
     public void setProgram(Program program) {
         this.currentProgram = program;
+    }
+
+    public Program getProgram() {
+        return currentProgram;
+    }
+
+    public void setLastOutputDir(Path outputDir) {
+        this.lastOutputDir = outputDir;
+    }
+
+    public Path getLastOutputDir() {
+        return lastOutputDir;
     }
 
     public void addString(StringData string) {
@@ -147,7 +160,10 @@ public class StringSniperComponentProvider extends ComponentProvider {
             JButton viewFileButton = new JButton("View Source File");
             viewFileButton.setAlignmentX(Component.LEFT_ALIGNMENT);
             viewFileButton.addActionListener(e -> {
-                Path tempDir = Path.of(System.getProperty("java.io.tmpdir"), "GSS_Results", hashValue);
+                Path baseDir = lastOutputDir != null
+                        ? lastOutputDir
+                        : Path.of(System.getProperty("java.io.tmpdir"));
+                Path tempDir = baseDir.resolve("GSS_Results").resolve(hashValue);
                 if (!tempDir.toFile().exists()) {
                     JOptionPane.showMessageDialog(accordionContent, "No file found for this hash.", "File Not Found", JOptionPane.WARNING_MESSAGE);
                     return;

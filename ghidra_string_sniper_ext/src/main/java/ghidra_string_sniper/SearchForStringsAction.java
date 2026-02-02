@@ -4,14 +4,23 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.JOptionPane;
+import javax.swing.JFileChooser;
+import javax.swing.SwingUtilities;
 
 import docking.ActionContext;
 import docking.ComponentProvider;
 import docking.action.DockingAction;
 import docking.action.ToolBarData;
+import ghidra.program.model.listing.Program;
+import ghidra.util.task.Task;
+import ghidra.util.task.TaskLauncher;
+import ghidra.util.task.TaskMonitor;
 import ghidra.util.Msg;
 
 import com.google.gson.JsonObject;
@@ -34,6 +43,10 @@ public class SearchForStringsAction extends DockingAction {
         String tokenValue = JOptionPane.showInputDialog(
                 "Enter your Openrouter API key here:", "EnterValue"
         );
+        if (tokenValue == null || tokenValue.trim().isEmpty()) {
+            Msg.showWarn(this, null, "Missing API Key", "API key is required to run the pipeline.");
+            return;
+        }
 
         try {
             File keyFile = File.createTempFile("SniperKey", ".txt");
@@ -52,79 +65,153 @@ public class SearchForStringsAction extends DockingAction {
         }
 
         StringSniperComponentProvider sscp = (StringSniperComponentProvider) cp;
-        sscp.clearStrings();
-
-        try {
-
-            String tmpDir = System.getProperty("java.io.tmpdir");
-
-            // ------------------------------
-            // LOAD results.json (entropy + resultsScore + hash)
-            // ------------------------------
-            File resultsDir = new File(tmpDir, "GSS_Results");
-            File resultsFile = new File(resultsDir, "results.json");
-
-            if (!resultsFile.exists()) {
-                throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
-            }
-
-            JsonObject resultsRoot =
-                    JsonParser.parseString(Files.readString(resultsFile.toPath())).getAsJsonObject();
-
-
-            // ------------------------------
-            // LOAD MATCHES.json (score)
-            // ------------------------------
-            File matchesDir = new File(tmpDir, "GSS_matches");
-            File matchesFile = new File(matchesDir, "MATCHES.json");
-
-            if (!matchesFile.exists()) {
-                throw new IOException("MATCHES.json not found: " + matchesFile.getAbsolutePath());
-            }
-
-            JsonObject matchesRoot =
-                    JsonParser.parseString(Files.readString(matchesFile.toPath())).getAsJsonObject();
-
-
-            // ------------------------------
-            // MERGE DATA AND ADD TO UI
-            // ------------------------------
-            for (String extractedValue : resultsRoot.keySet()) {
-
-                JsonObject rObj = resultsRoot.getAsJsonObject(extractedValue);
-
-                // Pull fields from results.json
-                int resultsScore = rObj.get("confidence").getAsInt();
-                float entropy = rObj.get("entropy").getAsFloat();
-                String hash = rObj.get("hash").getAsString();
-
-                // Try to get match confidence from MATCHES.json
-                Float matchScore = null;
-
-                if (matchesRoot.has(hash)) {
-                    JsonArray arr = matchesRoot.getAsJsonArray(hash);
-                    if (arr.size() > 1) {
-                        matchScore = arr.get(1).getAsFloat();
-                    }
-                }
-
-                // Build final record
-                StringData sd = new StringData(
-                        extractedValue,
-                        hash,
-                        matchScore,     // score (from MATCHES.json)
-                        resultsScore,   // results.json confidence
-                        entropy         // entropy
-                );
-
-                sscp.addString(sd);
-            }
-
-            sscp.applyDefaultSort();
-
-        } catch (Exception e) {
-            Msg.showError(this, null, "Error loading data", e.toString());
+        Program program = sscp.getProgram();
+        if (program == null) {
+            Msg.showError(this, null, "No Program", "No program is currently open.");
+            return;
         }
+
+        String binaryPath = program.getExecutablePath();
+        if (binaryPath == null || binaryPath.trim().isEmpty()) {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Select binary file");
+            if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
+                return;
+            }
+            binaryPath = chooser.getSelectedFile().getAbsolutePath();
+        }
+        if (binaryPath.startsWith("/") &&
+                binaryPath.length() > 3 &&
+                Character.isLetter(binaryPath.charAt(1)) &&
+                binaryPath.charAt(2) == ':') {
+            binaryPath = binaryPath.substring(1);
+        }
+        try {
+            binaryPath = Paths.get(binaryPath).toAbsolutePath().toString();
+        } catch (Exception e) {
+            Msg.showError(this, null, "Invalid Path", "Binary path must be absolute. Got: " + binaryPath);
+            return;
+        }
+        if (!Files.exists(Paths.get(binaryPath))) {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Binary not found. Select binary file");
+            if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
+                Msg.showError(this, null, "File Not Found", "Binary path does not exist: " + binaryPath);
+                return;
+            }
+            binaryPath = chooser.getSelectedFile().getAbsolutePath();
+        }
+
+        final String binaryPathFinal = binaryPath;
+        final Program programFinal = program;
+        final StringSniperComponentProvider sscpFinal = sscp;
+        final String keyPath = System.getProperty("StringSniperKeyFile");
+
+        Task task = new Task("Ghidra String Sniper Pipeline", true, true, true) {
+            @Override
+            public void run(TaskMonitor monitor) {
+                try {
+                    monitor.setMessage("Preparing pipeline...");
+                    Path outputDir = Files.createTempDirectory("GSS_Run_");
+
+                    monitor.setMessage("Checking pyghidra...");
+                    PythonRunner.RunResult preflight = PythonRunner.runSystemPython(
+                            "python",
+                            "extension_interface/check_pyghidra.py",
+                            new ArrayList<>(),
+                            0
+                    );
+                    if (preflight == null || preflight.exitCode != 0) {
+                        throw new IOException("pyghidra is required. Please install it in the Python environment used by Ghidra.");
+                    }
+
+                    List<String> args = new ArrayList<>();
+                    args.add("--binary");
+                    args.add(binaryPathFinal);
+                    args.add("--out");
+                    args.add(outputDir.toString());
+                    if (keyPath != null && !keyPath.isBlank()) {
+                        args.add("--token");
+                        args.add(keyPath);
+                    }
+                    if (programFinal.getLanguageID() != null) {
+                        args.add("--language");
+                        args.add(programFinal.getLanguageID().toString());
+                    }
+
+                    monitor.setMessage("Running Python pipeline...");
+                    PythonRunner.RunResult result = PythonRunner.runSystemPython(
+                            "python",
+                            "extension_interface/run_pipeline.py",
+                            args,
+                            0
+                    );
+
+                    if (result == null) {
+                        throw new IOException("Python pipeline timed out or failed to start.");
+                    }
+                    if (result.exitCode != 0) {
+                        throw new IOException("Python pipeline failed:\n" + result.stdout);
+                    }
+
+                    File resultsFile = outputDir.resolve("results.json").toFile();
+                    File matchesFile = outputDir.resolve("MATCHES.json").toFile();
+
+                    if (!resultsFile.exists()) {
+                        throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
+                    }
+                    if (!matchesFile.exists()) {
+                        throw new IOException("MATCHES.json not found: " + matchesFile.getAbsolutePath());
+                    }
+
+                    JsonObject resultsRoot =
+                            JsonParser.parseString(Files.readString(resultsFile.toPath())).getAsJsonObject();
+                    JsonObject matchesRoot =
+                            JsonParser.parseString(Files.readString(matchesFile.toPath())).getAsJsonObject();
+
+                    List<StringData> newData = new ArrayList<>();
+
+                    for (String extractedValue : resultsRoot.keySet()) {
+                        JsonObject rObj = resultsRoot.getAsJsonObject(extractedValue);
+
+                        int resultsScore = rObj.get("confidence").getAsInt();
+                        float entropy = rObj.get("entropy").getAsFloat();
+                        String hash = rObj.get("hash").getAsString();
+
+                        Float matchScore = null;
+                        if (matchesRoot.has(hash)) {
+                            JsonArray arr = matchesRoot.getAsJsonArray(hash);
+                            if (arr.size() > 1) {
+                                matchScore = arr.get(1).getAsFloat();
+                            }
+                        }
+
+                        newData.add(new StringData(
+                                extractedValue,
+                                hash,
+                                matchScore,
+                                resultsScore,
+                                entropy
+                        ));
+                    }
+
+                    SwingUtilities.invokeLater(() -> {
+                        sscpFinal.setLastOutputDir(outputDir);
+                        sscpFinal.clearStrings();
+                        for (StringData sd : newData) {
+                            sscpFinal.addString(sd);
+                        }
+                        sscpFinal.applyDefaultSort();
+                    });
+                } catch (Exception e) {
+                    SwingUtilities.invokeLater(() ->
+                            Msg.showError(SearchForStringsAction.this, null, "Pipeline Error", e.getMessage(), e)
+                    );
+                }
+            }
+        };
+
+        new TaskLauncher(task, sscp.getComponent());
     }
 
 

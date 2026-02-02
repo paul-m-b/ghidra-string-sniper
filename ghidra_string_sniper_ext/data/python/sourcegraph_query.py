@@ -1,42 +1,16 @@
-import requests
-import hashlib
 import json
-import os
-from pathlib import Path
-import tempfile
-import subprocess
+
+import requests
+
+from gss_paths import results_json_path, sourcegraph_dir
 
 
 class SOURCEGRAPH_QUERY:
     def __init__(self):
-        # Windows temp folder for saving results
-        temp_root = self.get_windows_temp_path()
-        self.temp_dir = temp_root / "GSS_Results"
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
-        self.results_json_path = self.temp_dir / "results.json"
-
-        # Project JSON source (input)
-        self.project_results_path = Path("./results.json")
-
+        self.temp_dir = sourcegraph_dir()
+        self.results_json_path = results_json_path()
+        self.project_results_path = self.results_json_path
         print(f"[INFO] results.json will be saved to: {self.results_json_path}")
-
-    # -------------------------------------------------------------------
-    @staticmethod
-    def get_windows_temp_path():
-        """Ensure MATCHES.json is always written to Windows temp directory, even inside WSL."""
-        try:
-            win_temp = subprocess.check_output(
-                ["powershell.exe", "-NoProfile", "-Command", "[IO.Path]::GetTempPath()"],
-                text=True
-            ).strip()
-            # Convert C:\ path to WSL-style /mnt/c/... path
-            if len(win_temp) > 1 and win_temp[1] == ":":
-                drive = win_temp[0].lower()
-                path = win_temp[2:].replace("\\", "/")
-                return Path(f"/mnt/{drive}{path}")
-            return Path(win_temp)
-        except Exception:
-            return Path(tempfile.gettempdir())
 
     # -------------------------------------------------------------------
     def iterate_search_strings(self):

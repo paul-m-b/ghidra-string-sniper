@@ -1,38 +1,13 @@
-from llm_interact import LLM_INTERACT
+import json
 import logging
 import os
-import json
 import time
 from pathlib import Path
-import tempfile
-import subprocess
+
+from llm_interact import LLM_INTERACT
+from gss_paths import matches_json_path, sourcegraph_dir, decomps_dir
 
 logging.basicConfig(level=logging.INFO)
-
-
-def get_windows_temp_path():
-    """
-    Ensures MATCHES.json is always written to the *Windows* temp directory,
-    even when executed inside WSL.
-    """
-    try:
-        # Run Windows PowerShell to get the real Windows %TEMP%
-        win_temp = subprocess.check_output(
-            ["powershell.exe", "-NoProfile", "-Command", "[IO.Path]::GetTempPath()"],
-            text=True
-        ).strip()
-
-        # Convert C:\path → /mnt/c/path
-        if win_temp[1] == ":":
-            drive = win_temp[0].lower()
-            path = win_temp[2:].replace("\\", "/")
-            return Path(f"/mnt/{drive}{path}")
-
-        return Path(win_temp)
-
-    except Exception:
-        # Fallback if powershell is unavailable
-        return Path(tempfile.gettempdir())
 
 
 class FUNCTION_MATCH:
@@ -40,28 +15,14 @@ class FUNCTION_MATCH:
         self.MODEL = "openai/gpt-oss-20b:free"
         self.LLM = LLM_INTERACT()
         self.MAX_RETRIES = 3
-
-        # === ALWAYS USE WINDOWS TEMP (even inside WSL) ===
-        temp_root = get_windows_temp_path()
-        self.temp_dir = temp_root / "GSS_matches"
-        self.temp_dir.mkdir(exist_ok=True)
-
-        self.temp_matches_path = self.temp_dir / "MATCHES.json"
-
-        # === PROJECT LOCATION FOR Linux / WSL scripts ===
-        self.project_matches_path = Path("./GSS_results/MATCHES.json")
-
-        logging.info(
-            f"[FUNCTION_MATCH] MATCHES.json will be written to:\n"
-            f"  WINDOWS TEMP: {self.temp_matches_path}\n"
-            f"  PROJECT:      {self.project_matches_path}"
-        )
+        self.matches_path = matches_json_path()
+        logging.info("[FUNCTION_MATCH] MATCHES.json will be written to: %s", self.matches_path)
 
     # -------------------------------------------------------------------
 
     def open_file(self, path: str, mode: str) -> str:
         try:
-            with open(path, mode) as f:
+            with open(path, mode, encoding="utf-8", errors="replace") as f:
                 return f.read()
         except Exception:
             logging.critical(f"Error opening `{path}`.")
@@ -124,28 +85,25 @@ class FUNCTION_MATCH:
 
     def iterate_through_results(self):
         out_dict = {}
-        root = Path("./GSS_results")
+        root = sourcegraph_dir()
+        decomp_root = decomps_dir()
 
         for dirpath, dirnames, filenames in os.walk(root):
-            if dirpath == "GSS_results":
+            if Path(dirpath) == root:
                 continue
 
             filenames = [os.path.join(dirpath, f) for f in filenames]
-            directory = dirpath.split("/")[1]
-            decomp_path = f"GSS_decomps/{directory}/decomp.txt"
+            directory = Path(dirpath).name
+            decomp_path = decomp_root / directory / "decomp.txt"
+            if not decomp_path.exists():
+                logging.warning("Missing decomp for %s; skipping match.", directory)
+                out_dict[directory] = ["", 0.0]
+                continue
 
-            out_dict[directory] = self.find_matching_func(decomp_path, filenames)
+            out_dict[directory] = self.find_matching_func(str(decomp_path), filenames)
 
-        # === WRITE TO WINDOWS TEMP FOR GHIDRA ===
-        with open(self.temp_matches_path, "w") as f:
+        with open(self.matches_path, "w") as f:
             json.dump(out_dict, f, indent=4)
 
-        # === WRITE TO PROJECT FOLDER FOR WSL ===
-        with open(self.project_matches_path, "w") as f:
-            json.dump(out_dict, f, indent=4)
-
-        logging.info("[DONE] MATCHES.json saved to:\n"
-                     f"  WINDOWS TEMP: {self.temp_matches_path}\n"
-                     f"  PROJECT:      {self.project_matches_path}")
-
-        print(f"[OUTPUT] MATCHES.json path: {self.temp_matches_path}")
+        logging.info("[DONE] MATCHES.json saved to: %s", self.matches_path)
+        print(f"[OUTPUT] MATCHES.json path: {self.matches_path}")

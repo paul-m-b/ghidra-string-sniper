@@ -32,17 +32,16 @@ public class StringSniperPlugin extends ProgramPlugin {
 	@Override
 	protected void programActivated(Program activatedProgram) {
 		super.programActivated(activatedProgram);
-		/*if (provider != null) {
+		if (provider != null) {
 			provider.setProgram(activatedProgram);
-		}*/
+		}
 	}
 
 	@Override
 	protected void programDeactivated(Program deactivatedProgram) {
 		super.programDeactivated(deactivatedProgram);
-		/*if (provider != null) {
+		if (provider != null) {
 			provider.setProgram(null);
-		}*/
+		}
 	}
 }
-

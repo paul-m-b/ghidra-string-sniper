@@ -1,4 +1,5 @@
 from llm_interact import LLM_INTERACT
+from gss_paths import results_json_path, decomps_dir
 from collections import Counter
 from pathlib import Path
 import subprocess
@@ -10,8 +11,8 @@ import sys
 import hashlib
 import os
 import re
+import shutil
 
-import pyghidra
 
 logging.basicConfig(level=logging.INFO)
 
@@ -162,16 +163,19 @@ class STRING_PRIORITIZE:
     Get strings, do non-LLM prioritization, then return a curated list of strings to pass to LLM
     '''
     def get_strings(self, binpath: str) -> list:
-        cmd = ["strings","-a","-n","4",binpath]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        stdout = result.stdout
-        string_list = stdout.split("\n")
+        strings_bin = shutil.which("strings")
+        if strings_bin:
+            cmd = [strings_bin, "-a", "-n", "4", binpath]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            stdout = result.stdout
+            string_list = stdout.split("\n")
+        else:
+            string_list = self.extract_strings_from_binary(binpath)
 
         string_list = self.remove_common_strings(string_list)
         string_list = self.filter_patterns(string_list) 
         string_list = self.filter_by_entropy(string_list)
-        string_list = [s for s in string_list if self.has_reasonable_character_distribution(s)]
+        string_list = self.has_reasonable_character_distribution(string_list)
         string_list = self.get_shannon_list(string_list)
         string_list = string_list[:self.MAX_STRING_COUNT]
 
@@ -187,11 +191,37 @@ class STRING_PRIORITIZE:
         string_list = self.remove_common_strings(string_list)
         string_list = self.filter_patterns(string_list) 
         string_list = self.filter_by_entropy(string_list)
-        string_list = [s for s in string_list if self.has_reasonable_character_distribution(s)]
+        string_list = self.has_reasonable_character_distribution(string_list)
         string_list = self.get_shannon_list(string_list)
         string_list = string_list[:self.MAX_STRING_COUNT]
 
         return string_list
+
+    '''
+    Cross-platform fallback string extractor (ASCII printable sequences).
+    '''
+    def extract_strings_from_binary(self, binpath: str, min_len: int = 4) -> list:
+        try:
+            with open(binpath, "rb") as f:
+                data = f.read()
+        except Exception as e:
+            logging.error(f"Failed to read binary for string extraction: {e}")
+            return []
+
+        strings = []
+        buf = bytearray()
+        for b in data:
+            if 32 <= b <= 126:
+                buf.append(b)
+                continue
+            if len(buf) >= min_len:
+                strings.append(buf.decode("ascii", errors="ignore"))
+            buf.clear()
+
+        if len(buf) >= min_len:
+            strings.append(buf.decode("ascii", errors="ignore"))
+
+        return strings
     
 
     '''
@@ -199,7 +229,7 @@ class STRING_PRIORITIZE:
     '''
     def get_prompt(self, prompt_path: str) -> str:
         try:
-            with open(prompt_path, "r") as f:
+            with open(prompt_path, "r", encoding="utf-8", errors="replace") as f:
                 return (f.read())
         except Exception as e:
             logging.critical(f"Getting prompt `{prompt_path}` failed.")
@@ -212,7 +242,8 @@ class STRING_PRIORITIZE:
     '''
     def prioritize_strings(self, binpath: str, lang: str=None, retries: int=0):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
-        user_prompt = str(self.get_ghidra_strings(binpath, lang=lang))
+        string_list = self.get_ghidra_strings(binpath, lang=lang)
+        user_prompt = str(string_list)
 
         messages = [
             {"role":"system","content":system_prompt},
@@ -268,7 +299,9 @@ class STRING_PRIORITIZE:
                     "hash": folder_name
             }
          
-        with open('results.json', 'w') as f:
+        out_path = results_json_path()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, 'w') as f:
             json.dump(output, f, indent=2)
 
         return response
@@ -280,6 +313,11 @@ class STRING_PRIORITIZE:
     '''
     def get_ghidra_strings(self, binary_path: str, lang: str=None) -> list[str]:
         logging.info("Loading binary into ghidra..")
+        try:
+            import pyghidra
+        except Exception as e:
+            raise ModuleNotFoundError("pyghidra is not available") from e
+
         with pyghidra.open_program(binary_path, analyze=True, language=lang) as flat_api:
             from ghidra.app.decompiler import DecompInterface
             from ghidra.util.task import ConsoleTaskMonitor
@@ -363,8 +401,10 @@ class STRING_PRIORITIZE:
                 md5_hash = hashlib.md5()
                 md5_hash.update(folder_name)
                 folder_name = str(md5_hash.hexdigest())
-                os.makedirs(f"GSS_decomps/{folder_name}/", exist_ok=True)
-                with open(f"GSS_decomps/{folder_name}/decomp.txt", "w") as file:
+                decomp_root = decomps_dir()
+                target_dir = decomp_root / folder_name
+                target_dir.mkdir(parents=True, exist_ok=True)
+                with open(target_dir / "decomp.txt", "w") as file:
                     file.write(all_decomp)
 
             return string_list
@@ -388,4 +428,3 @@ class STRING_PRIORITIZE:
     def normalize_string(self, s: str) -> str:
         s = s.replace("\\n","").replace("\\t","").replace("\\r","")
         return re.sub(r"\s+","",s)
-
