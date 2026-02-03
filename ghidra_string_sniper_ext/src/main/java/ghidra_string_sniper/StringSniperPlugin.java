@@ -25,7 +25,7 @@ public class StringSniperPlugin extends ProgramPlugin {
 		super(tool);
 
 		// set up component provider
-		provider = new StringSniperComponentProvider(tool, getName());
+		provider = new StringSniperComponentProvider(this, tool, getName());
 		provider.addToTool();
 	}
 

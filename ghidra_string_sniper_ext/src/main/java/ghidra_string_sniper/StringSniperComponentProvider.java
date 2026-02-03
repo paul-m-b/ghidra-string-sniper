@@ -149,11 +149,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
             JButton viewFileButton = new JButton("View Source File");
             viewFileButton.setAlignmentX(Component.LEFT_ALIGNMENT);
             viewFileButton.addActionListener(e -> {
-                Path baseDir = lastOutputDir != null
-                        ? lastOutputDir
-                        : Path.of(System.getProperty("java.io.tmpdir"));
-                Path tempDir = baseDir.resolve("GSS_Results").resolve(hashValue);
-                if (!tempDir.toFile().exists()) {
+                Path tempDir = resolveHashDir(hashValue);
+                if (tempDir == null || !tempDir.toFile().exists()) {
                     JOptionPane.showMessageDialog(accordionContent, "No file found for this hash.", "File Not Found", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
@@ -371,5 +368,44 @@ public class StringSniperComponentProvider extends ComponentProvider {
         getStringData().clear();
         getStringData().addAll(strings);
         getStringTableModel().fireTableDataChanged();
+    }
+
+    private Path resolveHashDir(String hash) {
+        if (hash == null || hash.isBlank()) {
+            return null;
+        }
+
+        Path baseDir = lastOutputDir != null
+                ? lastOutputDir
+                : Path.of(System.getProperty("java.io.tmpdir"));
+        Path direct = baseDir.resolve("GSS_Results").resolve(hash);
+        if (Files.isDirectory(direct)) {
+            return direct;
+        }
+
+        Path tempRoot = Path.of(System.getProperty("java.io.tmpdir"));
+        try {
+            Path best = null;
+            long bestTime = -1;
+            try (var stream = Files.list(tempRoot)) {
+                for (Path p : stream.toList()) {
+                    if (!Files.isDirectory(p) || !p.getFileName().toString().startsWith("GSS_Run_")) {
+                        continue;
+                    }
+                    Path candidate = p.resolve("GSS_Results").resolve(hash);
+                    if (!Files.isDirectory(candidate)) {
+                        continue;
+                    }
+                    long modified = candidate.toFile().lastModified();
+                    if (modified > bestTime) {
+                        bestTime = modified;
+                        best = candidate;
+                    }
+                }
+            }
+            return best;
+        } catch (IOException e) {
+            return null;
+        }
     }
 }
