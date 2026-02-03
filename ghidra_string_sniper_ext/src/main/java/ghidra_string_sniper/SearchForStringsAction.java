@@ -9,8 +9,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.swing.JOptionPane;
 import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
 import docking.ActionContext;
@@ -18,10 +18,10 @@ import docking.ComponentProvider;
 import docking.action.DockingAction;
 import docking.action.ToolBarData;
 import ghidra.program.model.listing.Program;
+import ghidra.util.Msg;
 import ghidra.util.task.Task;
 import ghidra.util.task.TaskLauncher;
 import ghidra.util.task.TaskMonitor;
-import ghidra.util.Msg;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonArray;
@@ -36,10 +36,8 @@ public class SearchForStringsAction extends DockingAction {
         setToolBarData(new ToolBarData(Icons.REFRESH_ICON));
     }
 
-   @Override
+    @Override
     public void actionPerformed(ActionContext context) {
-
-        // --- API KEY code unchanged ---
         String tokenValue = JOptionPane.showInputDialog(
                 "Enter your Openrouter API key here:", "EnterValue"
         );
@@ -57,6 +55,7 @@ public class SearchForStringsAction extends DockingAction {
             System.setProperty("StringSniperKeyFile", keyFile.getAbsolutePath());
         } catch (IOException e) {
             Msg.showError(this, null, "Key File Error", "Failed to write API key: " + e.getMessage());
+            return;
         }
 
         ComponentProvider cp = context.getComponentProvider();
@@ -198,6 +197,7 @@ public class SearchForStringsAction extends DockingAction {
                     SwingUtilities.invokeLater(() -> {
                         sscpFinal.setLastOutputDir(outputDir);
                         sscpFinal.clearStrings();
+                        sscpFinal.clearResults();
                         for (StringData sd : newData) {
                             sscpFinal.addString(sd);
                         }
@@ -211,10 +211,10 @@ public class SearchForStringsAction extends DockingAction {
             }
         };
 
-        new TaskLauncher(task, sscp.getComponent());
+        sscpFinal.clearStrings();
+        sscpFinal.clearResults();
+        new TaskLauncher(task, sscpFinal.getComponent());
     }
-
-
 
     @Override
     public boolean isEnabledForContext(ActionContext context) {

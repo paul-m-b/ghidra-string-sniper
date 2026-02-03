@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 from string_prioritize import STRING_PRIORITIZE
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True)
@@ -30,5 +31,6 @@ def main():
 
     print("Done...")
 
-if (__name__ == "__main__"):
+
+if __name__ == "__main__":
     main()

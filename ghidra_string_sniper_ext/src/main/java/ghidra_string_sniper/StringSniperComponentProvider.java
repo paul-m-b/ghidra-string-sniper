@@ -14,23 +14,23 @@ import docking.ComponentProvider;
 import ghidra.framework.plugintool.PluginTool;
 import resources.Icons;
 import java.net.URI;
-import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
-import ghidra.app.services.GoToService;
 import ghidra.util.Msg;
 
 public class StringSniperComponentProvider extends ComponentProvider {
     private Program currentProgram;
+    @SuppressWarnings("unused")
+    private StringSniperPlugin plugin;
 
     private StringTableModel stringsTableModel;
     private JTabbedPane tabbedPane;
     private JTable stringsTable;
     private JPanel resultsPanel;
-    private JPanel currentResultPanel;
     private Path lastOutputDir;
 
-    public StringSniperComponentProvider(PluginTool tool, String owner) {
+    public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
+        this.plugin = plugin;
         buildPanel();
 
         setTitle("String Sniper");
@@ -50,6 +50,12 @@ public class StringSniperComponentProvider extends ComponentProvider {
         stringsTableModel.clear();
     }
 
+    public void clearResults() {
+        resultsPanel.removeAll();
+        resultsPanel.revalidate();
+        resultsPanel.repaint();
+    }
+
     public void setProgram(Program program) {
         this.currentProgram = program;
     }
@@ -60,10 +66,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
     public void setLastOutputDir(Path outputDir) {
         this.lastOutputDir = outputDir;
-    }
-
-    public Path getLastOutputDir() {
-        return lastOutputDir;
     }
 
     public void addString(StringData string) {
@@ -79,22 +81,17 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     public void addResult(ResultData result) {
-
         JPanel accordionPanel = new JPanel();
         accordionPanel.setLayout(new BoxLayout(accordionPanel, BoxLayout.Y_AXIS));
 
-        JButton accordionButton = new JButton("► " + result.string.value);
+        JButton accordionButton = new JButton("> " + result.string.value);
         accordionButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, accordionButton.getPreferredSize().height));
         accordionButton.setFocusPainted(false);
 
         JPanel accordionContent = new JPanel();
         accordionContent.setLayout(new BoxLayout(accordionContent, BoxLayout.Y_AXIS));
 
-        // ---------------- CONFIDENCE ----------------
-        JLabel confidenceScore = new JLabel(
-            "Confidence: " + (result.confidence >= 0 ? result.confidence : 0) + "/10"
-        );
-
+        JLabel confidenceScore = new JLabel("LLM Confidence: " + Math.max(result.confidence, 0) + "/10");
         if (result.confidence >= 7.5f) {
             confidenceScore.setForeground(Color.GREEN);
         } else if (result.confidence >= 3.5f) {
@@ -104,7 +101,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         }
         accordionContent.add(confidenceScore);
 
-        // ---------------- REPO / LINK ----------------
         JPanel repoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         repoPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         repoPanel.setOpaque(false);
@@ -137,25 +133,18 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         repoPanel.add(repoLabel);
         repoPanel.add(linkText);
-
         Dimension pref = repoPanel.getPreferredSize();
         repoPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, pref.height));
         accordionContent.add(repoPanel);
 
-        // ---------------- MD5 HASH ----------------
         String hashValue = (result.hash != null) ? result.hash : "N/A";
         accordionContent.add(new JLabel("MD5 Hash: " + hashValue));
 
-        // ---------------- ENTROPY ----------------
         String entropyValue = (result.entropy != null)
                 ? String.format("%.4f", result.entropy)
                 : "N/A";
         accordionContent.add(new JLabel("Entropy: " + entropyValue));
 
-        // ---------------- LLM ASSESSMENT ----------------
-        accordionContent.add(new JLabel("LLM Assessment: Pending"));
-
-        // ---------------- VIEW FILE BUTTON ----------------
         if (!hashValue.equals("N/A")) {
             JButton viewFileButton = new JButton("View Source File");
             viewFileButton.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -172,7 +161,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
                 try {
                     File[] files = tempDir.toFile().listFiles();
                     if (files != null && files.length > 0) {
-                        
                         File fileToShow = files[0];
                         String content = Files.readString(fileToShow.toPath());
                         JTextArea textArea = new JTextArea(content);
@@ -190,11 +178,10 @@ public class StringSniperComponentProvider extends ComponentProvider {
             accordionContent.add(viewFileButton);
         }
 
-        // ---------------- COLLAPSE / EXPAND ----------------
         accordionContent.setVisible(false);
         accordionButton.addActionListener(e -> {
             accordionContent.setVisible(!accordionContent.isVisible());
-            accordionButton.setText((accordionContent.isVisible() ? "▼ " : "► ") + result.string.value);
+            accordionButton.setText((accordionContent.isVisible() ? "v " : "> ") + result.string.value);
             accordionPanel.revalidate();
             accordionPanel.repaint();
         });
@@ -254,16 +241,12 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     if (row != -1) {
                         StringData s = stringsTableModel.getStringData().get(row);
 
-                        float score = s.score != null ? s.score : 1.0f;
-                        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 1;
-                        addResult(new ResultData(
-                            score,
-                            confidence,
-                            s.address != null ? s.address : "N/A",
-                            s.entropy != null ? s.entropy.doubleValue() : null,
-                            s
-                        ));
+        float score = s.score != null ? s.score : 0.0f;
+        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 0;
+        String hash = s.address != null ? s.address : "N/A";
+        Double entropy = s.entropy != null ? s.entropy.doubleValue() : null;
 
+        addResult(new ResultData(score, confidence, hash, entropy, s));
                         tabbedPane.setSelectedIndex(1);
                     }
                 }
@@ -284,7 +267,6 @@ public class StringSniperComponentProvider extends ComponentProvider {
         return tabbedPane;
     }
 
-    // ---------------- Table Model ----------------
     public class StringTableModel extends AbstractTableModel {
         List<StringData> stringData = new ArrayList<>();
         private List<StringData> allData = new ArrayList<>();
@@ -317,7 +299,11 @@ public class StringSniperComponentProvider extends ComponentProvider {
             StringData s = stringData.get(row);
             switch (col) {
                 case 0: return s.value;
-                case 1: return (s.score != null) ? String.format("%.2f", s.score) : "N/A";
+                case 1:
+                    if (s.resultsScore != null) {
+                        return String.format("%.2f", s.resultsScore.floatValue());
+                    }
+                    return (s.score != null) ? String.format("%.2f", s.score) : "N/A";
             }
             return null;
         }
@@ -353,16 +339,14 @@ public class StringSniperComponentProvider extends ComponentProvider {
                 }
             }
 
-            // --- sort after filtering ---
             Comparator<StringData> comparator = Comparator
-                    .comparing((StringData s) -> s.score == null ? Float.NEGATIVE_INFINITY : s.score)
+                    .comparing((StringData s) -> s.resultsScore == null ? Float.NEGATIVE_INFINITY : s.resultsScore.floatValue())
                     .thenComparing(s -> s.value == null ? "" : s.value);
-            comparator = comparator.reversed(); // highest score first
+            comparator = comparator.reversed();
             stringData.sort(comparator);
 
             fireTableDataChanged();
         }
-
 
         public void removeRow(int row) {
             if (row >= 0 && row < stringData.size()) {
@@ -377,40 +361,15 @@ public class StringSniperComponentProvider extends ComponentProvider {
         List<StringData> strings = new ArrayList<>(getStringData());
 
         Comparator<StringData> comparator = Comparator
-                .comparing((StringData s) -> s.score == null ? Float.NEGATIVE_INFINITY : s.score)
+                .comparing((StringData s) -> s.resultsScore == null ? Float.NEGATIVE_INFINITY : s.resultsScore.floatValue())
                 .thenComparing(s -> s.value == null ? "" : s.value);
 
-        comparator = comparator.reversed(); // highest score first
+        comparator = comparator.reversed();
 
-        strings.sort(comparator); // SORTS BEFORE RE-ADDING
+        strings.sort(comparator);
 
         getStringData().clear();
         getStringData().addAll(strings);
         getStringTableModel().fireTableDataChanged();
-    }
-
-
-    private void navigateToAddress(String addressString) {
-        if (currentProgram == null) {
-            Msg.showError(this, null, "Navigation Error", "No program is currently open.");
-            return;
-        }
-
-        GoToService goToService = getTool().getService(GoToService.class);
-        if (goToService == null) {
-            Msg.showError(this, null, "Navigation Error", "GoToService not found.");
-            return;
-        }
-
-        try {
-            Address address = currentProgram.getAddressFactory().getAddress(addressString);
-            if (address != null) {
-                goToService.goTo(address, currentProgram);
-            } else {
-                Msg.showWarn(this, null, "Invalid Address", "Could not resolve address: " + addressString);
-            }
-        } catch (Exception e) {
-            Msg.showError(this, null, "Navigation Error", "Failed to navigate to address: " + e.getMessage(), e);
-        }
     }
 }

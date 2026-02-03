@@ -1,10 +1,10 @@
 package ghidra_string_sniper;
 
 public class ResultData {
-    public float score;        // Ranking score (Sniper score)
-    public int confidence;     // JSON field
-    public String hash;        // JSON field
-    public Double entropy;     // JSON field
+    public float score;
+    public int confidence;
+    public String hash;
+    public Double entropy;
     public StringData string;
 
     public ResultData(float score, int confidence, String hash, Double entropy, StringData string) {

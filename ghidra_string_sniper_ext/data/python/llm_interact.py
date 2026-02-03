@@ -18,7 +18,6 @@ class LLM_INTERACT:
             env_path = Path(env_token)
             if env_path.exists():
                 return env_path.read_text().strip()
-            # If env var is set but not a file, assume it is the token value.
             return env_token
 
         with open(path, "r") as f:

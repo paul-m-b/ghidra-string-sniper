@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 from function_match import FUNCTION_MATCH
 from sourcegraph_query import SOURCEGRAPH_QUERY
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=False)
@@ -27,5 +28,6 @@ def main():
     f = FUNCTION_MATCH()
     f.iterate_through_results()
 
-if (__name__ == "__main__"):
+
+if __name__ == "__main__":
     main()

@@ -23,10 +23,10 @@ def main():
     args = parser.parse_args()
 
     os.environ["GSS_OUT"] = args.out
-    if "PYGHIDRA_PROJECT_DIR" not in os.environ:
-        os.environ["PYGHIDRA_PROJECT_DIR"] = args.out
     if args.token:
         os.environ["GSS_TOKEN"] = args.token
+    if "PYGHIDRA_PROJECT_DIR" not in os.environ:
+        os.environ["PYGHIDRA_PROJECT_DIR"] = args.out
 
     s = STRING_PRIORITIZE()
     if args.model:

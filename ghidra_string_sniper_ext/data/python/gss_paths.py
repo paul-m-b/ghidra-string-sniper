@@ -3,9 +3,6 @@ from pathlib import Path
 
 
 def get_output_dir() -> Path:
-    """
-    Resolve output directory from env var or default to current working directory.
-    """
     out = os.environ.get("GSS_OUT", "")
     if out:
         return Path(out).expanduser().resolve()
