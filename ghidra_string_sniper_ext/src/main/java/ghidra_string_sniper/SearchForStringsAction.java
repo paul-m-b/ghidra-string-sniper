@@ -115,14 +115,18 @@ public class SearchForStringsAction extends DockingAction {
             @Override
             public void run(TaskMonitor monitor) {
                 try {
+                    monitor.initialize(100);
+                    monitor.setProgress(0);
                     monitor.setMessage("Preparing output...");
                     if (Files.exists(outputDirFinal)) {
                         deleteDirectory(outputDirFinal);
                     }
                     Files.createDirectories(outputDirFinal);
+                    monitor.setProgress(5);
 
                     monitor.setMessage("Exporting strings...");
                     Map<String, Address> addressMap = exportStringsRaw(programFinal, outputDirFinal);
+                    monitor.setProgress(15);
 
                     monitor.setMessage("Ranking strings (LLM)...");
                     List<String> rankArgs = new ArrayList<>();
@@ -146,6 +150,7 @@ public class SearchForStringsAction extends DockingAction {
                     if (rankResult.exitCode != 0) {
                         throw new IOException("Python ranking failed:\n" + rankResult.stdout);
                     }
+                    monitor.setProgress(35);
 
                     File resultsFile = outputDirFinal.resolve("results.json").toFile();
                     if (!resultsFile.exists()) {
@@ -156,7 +161,8 @@ public class SearchForStringsAction extends DockingAction {
                             JsonParser.parseString(Files.readString(resultsFile.toPath())).getAsJsonObject();
 
                     monitor.setMessage("Decompiling referenced functions...");
-                    writeDecomps(programFinal, addressMap, resultsRoot, outputDirFinal, monitor);
+                    writeDecomps(programFinal, addressMap, resultsRoot, outputDirFinal, monitor, 35, 40);
+                    monitor.setProgress(75);
 
                     monitor.setMessage("Sourcegraph + function match...");
                     List<String> analyzeArgs = new ArrayList<>();
@@ -178,6 +184,7 @@ public class SearchForStringsAction extends DockingAction {
                     if (analyzeResult.exitCode != 0) {
                         throw new IOException("Python analysis failed:\n" + analyzeResult.stdout);
                     }
+                    monitor.setProgress(90);
 
                     File matchesFile = outputDirFinal.resolve("MATCHES.json").toFile();
                     if (!matchesFile.exists()) {
@@ -211,6 +218,7 @@ public class SearchForStringsAction extends DockingAction {
                                 entropy
                         ));
                     }
+                    monitor.setProgress(100);
 
                     SwingUtilities.invokeLater(() -> {
                         sscpFinal.setLastOutputDir(outputDirFinal);
@@ -286,15 +294,25 @@ public class SearchForStringsAction extends DockingAction {
                                      Map<String, Address> addressMap,
                                      JsonObject resultsRoot,
                                      Path outputDir,
-                                     TaskMonitor monitor) throws IOException, CancelledException {
+                                     TaskMonitor monitor,
+                                     int baseProgress,
+                                     int progressSpan) throws IOException, CancelledException {
         Path decompRoot = outputDir.resolve("GSS_decomps");
         Files.createDirectories(decompRoot);
 
         DecompInterface ifc = new DecompInterface();
         ifc.openProgram(program);
         try {
+            int total = Math.max(resultsRoot.size(), 1);
+            int done = 0;
             for (String strValue : resultsRoot.keySet()) {
                 monitor.checkCancelled();
+                done++;
+                int progress = baseProgress + (int) Math.round((progressSpan * (double) done) / total);
+                if (progress > 99) {
+                    progress = 99;
+                }
+                monitor.setProgress(progress);
                 Address addr = addressMap.get(strValue);
                 if (addr == null) {
                     continue;
