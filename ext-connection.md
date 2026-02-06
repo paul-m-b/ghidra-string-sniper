@@ -1,14 +1,14 @@
 # Ghidra String Sniper: UI <-> Backend Connection
 
-This document describes the current Option B pipeline: Java handles all program‑dependent
+This document describes the current Option B pipeline: Java handles all program-dependent
 work; Python handles LLM + internet work.
 
-## How It Works (End‑to‑End)
+## How It Works (End-to-End)
 
 1. **User clicks** the "Search For Strings" toolbar action.
 2. **Java exports strings** from the open program into `strings_raw.json`.
 3. **Python ranks strings** (heuristics + LLM) using `rank_strings.py`, writing `results.json`.
-4. **Java decompiles** referenced functions for the top strings and writes `GSS_decomps/<hash>/decomp.txt`.
+4. **Java decompiles** referenced functions for the ranked strings and writes `GSS_decomps/<hash>/decomp.txt`.
 5. **Python analyzes** Sourcegraph + function match via `analyze_strings.py`, writing `GSS_Results/*` and `MATCHES.json`.
 6. **UI loads** `results.json` + `MATCHES.json` and populates the Strings table.
 
@@ -23,6 +23,7 @@ All artifacts are stored per binary inside the Ghidra project directory:
   MATCHES.json
   GSS_Results/<hash>/*
   GSS_decomps/<hash>/decomp.txt
+  pipeline.log
 ```
 
 Only the most recent run is kept (the folder is deleted and recreated each run).
@@ -68,41 +69,16 @@ Outputs:
 ## View Source File
 
 - The Results tab uses the string hash to look up matching Sourcegraph files.
-- It first checks the current run’s `outputDir/GSS_Results/<hash>`.
+- It first checks the current run's `outputDir/GSS_Results/<hash>`.
 - If not found, it scans `<project>/gss_runs/*/GSS_Results/<hash>`.
 
-## TODOs
+## Logging
 
-### Core pipeline correctness
-- Ensure all backend outputs live under the run output dir (`GSS_OUT`) and no code reads/writes `./`.
-- Add a “decomp present?” flag in results to distinguish string‑only vs function‑matchable entries.
-- Treat “no references” as a first‑class state (log once, mark string as non‑matchable).
+- A per-run log file is written to `pipeline.log` inside the run output directory.
+- Java logs are written to the Ghidra Log window and to the Console (via `ConsoleService` when available).
+- Python logs stream into the same `pipeline.log` and the Ghidra Console.
 
-### UI clarity + behavior
-- Rename columns to reflect what they display (LLM confidence vs function match score).
-- Show a status badge in Results: `No decomp`, `Sourcegraph hit`, `Function match`.
-- On pipeline failure, keep strings/results empty and show a single detailed error dialog.
+## Scoring semantics
 
-### Output handling / diagnostics
-- Persist a `pipeline.log` in the run output dir for troubleshooting.
-- Surface the run output dir in UI (e.g., “Open Output Folder” action).
-
-### Sourcegraph & matching robustness
-- Skip function-match step for hashes with empty `decomp.txt`.
-- Add retry/backoff for Sourcegraph calls and rate limit detection.
-
-### Token handling
-- Validate token before running (simple LLM check or OpenRouter status call).
-- Clear warning if token missing/invalid.
-
-### Performance
-- Limit decomp + Sourcegraph to top‑N prioritized strings (configurable).
-- Use smaller decomp timeouts and skip repeated failures.
-
-### Configuration
-- Add a settings dialog for model, max strings, entropy range, Sourcegraph on/off, output retention.
-
-### UX polish
-- Replace placeholder link with actual Sourcegraph URL.
-- Add “Copy string/hash” context actions.
-- Add a small help panel explaining the pipeline and scores.
+- **Open Source Confidence**: LLM usefulness score from `results.json` (0-10).
+- **Match Confidence**: LLM similarity score from `MATCHES.json` (0-10) based on decompiled function vs Sourcegraph match.

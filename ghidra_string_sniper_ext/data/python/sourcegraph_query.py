@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import requests
 from gss_paths import results_json_path, sourcegraph_dir
@@ -14,6 +15,49 @@ class SOURCEGRAPH_QUERY:
     containing the returned file contents from sourcegraph with a small header containing the line number of the matches.
     Also calls get_readme if 4th argument is true.
     """
+
+    def _escape_controls(self, query: str) -> str:
+        # Convert real control chars to escaped sequences for code-search.
+        query = query.replace("\\", "\\\\")
+        query = query.replace("\r\n", "\\\\r\\\\n")
+        query = query.replace("\n", "\\\\n")
+        query = query.replace("\r", "\\\\r")
+        query = query.replace("\t", "\\\\t")
+        return query
+
+    def _collapse_whitespace(self, query: str) -> str:
+        query = query.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        query = re.sub(r"\s+", " ", query).strip()
+        return query
+
+    def query_variants(self, query: str) -> list[str]:
+        if query is None:
+            return []
+        seen = set()
+        variants = []
+
+        def add(val: str):
+            if not val:
+                return
+            if val in seen:
+                return
+            seen.add(val)
+            variants.append(val)
+
+        raw = query
+        add(raw)
+
+        escaped = self._escape_controls(raw)
+        add(escaped)
+
+        collapsed = self._collapse_whitespace(raw)
+        add(collapsed)
+
+        if "\n" in raw or "\r" in raw:
+            first_line = raw.splitlines()[0].strip()
+            add(first_line)
+
+        return variants
     def get_repos(self, query: str, match_count: str, query_hash: str) -> set():
         """
         with open(input_file_name, 'r') as file:
@@ -128,7 +172,20 @@ class SOURCEGRAPH_QUERY:
             useful_strings = json.load(file)
 
         for string in useful_strings.keys():
-            self.get_repos(string, 5, useful_strings[string]["hash"])
+            query_hash = useful_strings[string]["hash"]
+            variants = self.query_variants(string)
+            if not variants:
+                continue
+            found = False
+            for idx, q in enumerate(variants):
+                repos = self.get_repos(q, 5, query_hash)
+                if repos:
+                    if idx > 0:
+                        print(f"Fallback match used variant {idx} for hash {query_hash}")
+                    found = True
+                    break
+            if not found:
+                print(f"No Sourcegraph matches for any variant (hash={query_hash})")
 
 
 """
@@ -181,4 +238,3 @@ def get_readme(repo_url: str):
     except Exception as e:
         print(f"Error: {e}")
         return
-

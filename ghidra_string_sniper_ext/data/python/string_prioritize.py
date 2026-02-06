@@ -128,7 +128,8 @@ class STRING_PRIORITIZE:
     def prioritize_strings_list(self, string_list: list, retries: int = 0):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
         curated = self.select_strings(string_list)
-        user_prompt = str(curated)
+        id_to_string = {str(i): s for i, s in enumerate(curated)}
+        user_prompt = "\n".join([f"{i}: {s}" for i, s in enumerate(curated)])
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -147,6 +148,7 @@ class STRING_PRIORITIZE:
             return self.prioritize_strings_list(string_list, retries=retries + 1)
 
         output = {}
+        normalized_map = {self.normalize_string(s): s for s in curated}
         logging.info(content)
         for line in content:
             if "--GSS_DELIM--" not in line:
@@ -165,10 +167,26 @@ class STRING_PRIORITIZE:
                 logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
                 return self.prioritize_strings_list(string_list, retries=retries + 1)
 
-            output[raw] = {
+            string_value = None
+            match = re.search(r"\b(\d+)\b", raw)
+            if match and match.group(1) in id_to_string:
+                string_value = id_to_string[match.group(1)]
+            elif raw in id_to_string:
+                string_value = id_to_string[raw]
+            elif raw in curated:
+                string_value = raw
+            else:
+                normalized = self.normalize_string(raw)
+                string_value = normalized_map.get(normalized)
+
+            if string_value is None:
+                logging.warning("LLM returned unknown id/string: %s", raw)
+                continue
+
+            output[string_value] = {
                 "confidence": confidence_value,
-                "entropy": self.shannon_entropy(raw),
-                "hash": self.compute_hash(raw)
+                "entropy": self.shannon_entropy(string_value),
+                "hash": self.compute_hash(string_value)
             }
 
         out_path = results_json_path()
@@ -177,5 +195,3 @@ class STRING_PRIORITIZE:
             json.dump(output, f, indent=2)
 
         return output
-
-    # Legacy helpers removed: get_strings / get_strings_stdin
