@@ -57,7 +57,10 @@ pipeline contract.
 `SearchForStringsAction` now:
 
 - Resolves `Program.getExecutablePath()` (or prompts for a file).
-- Creates a temp output directory for this run.
+- Uses a per-binary output directory inside the current Ghidra project:
+  `<project>/gss_runs/<binaryName>_<hash>/`.
+- If the directory already exists, it is deleted so only the most recent run is kept.
+- Stores the API token in `<project>/gss_token.txt` to avoid re-prompting on subsequent runs.
 - Calls `PythonRunner.runSystemPython(...)` with the pipeline entry script.
 - Loads results from `outputDir/results.json` and `outputDir/MATCHES.json`.
 - Updates the table and sorts by score.
@@ -66,7 +69,7 @@ pipeline contract.
 
 - The Results tab uses the string hash to look up matching Sourcegraph files.
 - It first checks the current run's `outputDir/GSS_Results/<hash>`.
-- If not found, it falls back to the most recent `GSS_Run_*` directory in `%TEMP%`.
+- If not found, it scans `<project>/gss_runs/*/GSS_Results/<hash>`.
 - If no files exist for the hash, the UI reports "No file found for this hash."
 
 ## Cross-Platform Notes

@@ -3,11 +3,15 @@ package ghidra_string_sniper;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
@@ -38,26 +42,6 @@ public class SearchForStringsAction extends DockingAction {
 
     @Override
     public void actionPerformed(ActionContext context) {
-        String tokenValue = JOptionPane.showInputDialog(
-                "Enter your Openrouter API key here:", "EnterValue"
-        );
-        if (tokenValue == null || tokenValue.trim().isEmpty()) {
-            Msg.showWarn(this, null, "Missing API Key", "API key is required to run the pipeline.");
-            return;
-        }
-
-        try {
-            File keyFile = File.createTempFile("SniperKey", ".txt");
-            keyFile.deleteOnExit();
-            try (FileWriter writer = new FileWriter(keyFile)) {
-                writer.write(tokenValue);
-            }
-            System.setProperty("StringSniperKeyFile", keyFile.getAbsolutePath());
-        } catch (IOException e) {
-            Msg.showError(this, null, "Key File Error", "Failed to write API key: " + e.getMessage());
-            return;
-        }
-
         ComponentProvider cp = context.getComponentProvider();
         if (!(cp instanceof StringSniperComponentProvider)) {
             return;
@@ -67,6 +51,11 @@ public class SearchForStringsAction extends DockingAction {
         Program program = sscp.getProgram();
         if (program == null) {
             Msg.showError(this, null, "No Program", "No program is currently open.");
+            return;
+        }
+        Path projectDir = sscp.getProjectDir();
+        if (projectDir == null) {
+            Msg.showError(this, null, "No Project", "No project is currently open.");
             return;
         }
 
@@ -101,17 +90,52 @@ public class SearchForStringsAction extends DockingAction {
             binaryPath = chooser.getSelectedFile().getAbsolutePath();
         }
 
+        Path gssRoot = projectDir.resolve("gss_runs");
+        String binaryId = buildBinaryId(binaryPath);
+        Path outputDir = gssRoot.resolve(binaryId);
+        Path tokenPath = projectDir.resolve("gss_token.txt");
+
+        String tokenValue = null;
+        if (Files.exists(tokenPath)) {
+            try {
+                tokenValue = Files.readString(tokenPath, StandardCharsets.UTF_8).trim();
+            } catch (IOException e) {
+                Msg.showError(this, null, "Token Read Error", "Failed to read stored API key: " + e.getMessage());
+                return;
+            }
+        }
+        if (tokenValue == null || tokenValue.isBlank()) {
+            tokenValue = JOptionPane.showInputDialog(
+                    "Enter your Openrouter API key here:", "EnterValue"
+            );
+            if (tokenValue == null || tokenValue.trim().isEmpty()) {
+                Msg.showWarn(this, null, "Missing API Key", "API key is required to run the pipeline.");
+                return;
+            }
+            try {
+                Files.createDirectories(projectDir);
+                Files.writeString(tokenPath, tokenValue.trim(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                Msg.showError(this, null, "Token Write Error", "Failed to save API key: " + e.getMessage());
+                return;
+            }
+        }
+
         final String binaryPathFinal = binaryPath;
         final Program programFinal = program;
         final StringSniperComponentProvider sscpFinal = sscp;
-        final String keyPath = System.getProperty("StringSniperKeyFile");
+        final String keyPath = tokenPath.toString();
+        final Path outputDirFinal = outputDir;
 
         Task task = new Task("Ghidra String Sniper Pipeline", true, true, true) {
             @Override
             public void run(TaskMonitor monitor) {
                 try {
                     monitor.setMessage("Preparing pipeline...");
-                    Path outputDir = Files.createTempDirectory("GSS_Run_");
+                    if (Files.exists(outputDirFinal)) {
+                        deleteDirectory(outputDirFinal);
+                    }
+                    Files.createDirectories(outputDirFinal);
 
                     monitor.setMessage("Checking pyghidra...");
                     PythonRunner.RunResult preflight = PythonRunner.runSystemPython(
@@ -128,7 +152,7 @@ public class SearchForStringsAction extends DockingAction {
                     args.add("--binary");
                     args.add(binaryPathFinal);
                     args.add("--out");
-                    args.add(outputDir.toString());
+                    args.add(outputDirFinal.toString());
                     if (keyPath != null && !keyPath.isBlank()) {
                         args.add("--token");
                         args.add(keyPath);
@@ -153,8 +177,8 @@ public class SearchForStringsAction extends DockingAction {
                         throw new IOException("Python pipeline failed:\n" + result.stdout);
                     }
 
-                    File resultsFile = outputDir.resolve("results.json").toFile();
-                    File matchesFile = outputDir.resolve("MATCHES.json").toFile();
+                    File resultsFile = outputDirFinal.resolve("results.json").toFile();
+                    File matchesFile = outputDirFinal.resolve("MATCHES.json").toFile();
 
                     if (!resultsFile.exists()) {
                         throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
@@ -195,7 +219,7 @@ public class SearchForStringsAction extends DockingAction {
                     }
 
                     SwingUtilities.invokeLater(() -> {
-                        sscpFinal.setLastOutputDir(outputDir);
+                        sscpFinal.setLastOutputDir(outputDirFinal);
                         sscpFinal.clearStrings();
                         sscpFinal.clearResults();
                         for (StringData sd : newData) {
@@ -219,5 +243,45 @@ public class SearchForStringsAction extends DockingAction {
     @Override
     public boolean isEnabledForContext(ActionContext context) {
         return context != null && context.getComponentProvider() instanceof StringSniperComponentProvider;
+    }
+
+    private static void deleteDirectory(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(path)) {
+            walk.sorted((a, b) -> b.compareTo(a)).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof IOException) {
+                throw (IOException) e.getCause();
+            }
+            throw e;
+        }
+    }
+
+    private static String buildBinaryId(String binaryPath) {
+        String baseName = Paths.get(binaryPath).getFileName().toString();
+        String hash = hashString(binaryPath);
+        return baseName + "_" + hash.substring(0, 8);
+    }
+
+    private static String hashString(String value) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("MD5 not available", e);
+        }
     }
 }

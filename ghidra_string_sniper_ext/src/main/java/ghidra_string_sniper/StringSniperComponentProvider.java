@@ -12,6 +12,7 @@ import java.util.*;
 import java.util.List;
 import docking.ComponentProvider;
 import ghidra.framework.plugintool.PluginTool;
+import ghidra.framework.model.Project;
 import resources.Icons;
 import java.net.URI;
 import ghidra.program.model.listing.Program;
@@ -21,6 +22,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private Program currentProgram;
     @SuppressWarnings("unused")
     private StringSniperPlugin plugin;
+    private PluginTool pluginTool;
 
     private StringTableModel stringsTableModel;
     private JTabbedPane tabbedPane;
@@ -31,6 +33,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
         this.plugin = plugin;
+        this.pluginTool = tool;
         buildPanel();
 
         setTitle("String Sniper");
@@ -66,6 +69,17 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
     public void setLastOutputDir(Path outputDir) {
         this.lastOutputDir = outputDir;
+    }
+
+    public Path getProjectDir() {
+        if (pluginTool == null) {
+            return null;
+        }
+        Project project = pluginTool.getProject();
+        if (project == null || project.getProjectLocator() == null) {
+            return null;
+        }
+        return project.getProjectLocator().getProjectDir().toPath();
     }
 
     public void addString(StringData string) {
@@ -238,12 +252,12 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     if (row != -1) {
                         StringData s = stringsTableModel.getStringData().get(row);
 
-        float score = s.score != null ? s.score : 0.0f;
-        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 0;
-        String hash = s.address != null ? s.address : "N/A";
-        Double entropy = s.entropy != null ? s.entropy.doubleValue() : null;
+                        float score = s.score != null ? s.score : 0.0f;
+                        int confidence = s.resultsScore != null ? s.resultsScore.intValue() : 0;
+                        String hash = s.address != null ? s.address : "N/A";
+                        Double entropy = s.entropy != null ? s.entropy.doubleValue() : null;
 
-        addResult(new ResultData(score, confidence, hash, entropy, s));
+                        addResult(new ResultData(score, confidence, hash, entropy, s));
                         tabbedPane.setSelectedIndex(1);
                     }
                 }
@@ -375,37 +389,32 @@ public class StringSniperComponentProvider extends ComponentProvider {
             return null;
         }
 
-        Path baseDir = lastOutputDir != null
-                ? lastOutputDir
-                : Path.of(System.getProperty("java.io.tmpdir"));
-        Path direct = baseDir.resolve("GSS_Results").resolve(hash);
-        if (Files.isDirectory(direct)) {
-            return direct;
+        Path baseDir = lastOutputDir;
+        if (baseDir != null) {
+            Path direct = baseDir.resolve("GSS_Results").resolve(hash);
+            if (Files.isDirectory(direct)) {
+                return direct;
+            }
         }
 
-        Path tempRoot = Path.of(System.getProperty("java.io.tmpdir"));
-        try {
-            Path best = null;
-            long bestTime = -1;
-            try (var stream = Files.list(tempRoot)) {
-                for (Path p : stream.toList()) {
-                    if (!Files.isDirectory(p) || !p.getFileName().toString().startsWith("GSS_Run_")) {
-                        continue;
-                    }
-                    Path candidate = p.resolve("GSS_Results").resolve(hash);
-                    if (!Files.isDirectory(candidate)) {
-                        continue;
-                    }
-                    long modified = candidate.toFile().lastModified();
-                    if (modified > bestTime) {
-                        bestTime = modified;
-                        best = candidate;
-                    }
+        Path projectDir = getProjectDir();
+        if (projectDir == null) {
+            return null;
+        }
+        Path gssRoot = projectDir.resolve("gss_runs");
+        if (!Files.isDirectory(gssRoot)) {
+            return null;
+        }
+        try (var stream = Files.list(gssRoot)) {
+            for (Path p : stream.toList()) {
+                Path candidate = p.resolve("GSS_Results").resolve(hash);
+                if (Files.isDirectory(candidate)) {
+                    return candidate;
                 }
             }
-            return best;
         } catch (IOException e) {
             return null;
         }
+        return null;
     }
 }
