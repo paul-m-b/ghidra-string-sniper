@@ -2,6 +2,7 @@ package ghidra_string_sniper;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
@@ -239,6 +240,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         stringsTableModel = new StringTableModel();
         stringsTable = new JTable(stringsTableModel);
+        stringsTable.getColumnModel().getColumn(2).setCellRenderer(new MatchConfidenceRenderer());
 
         stringsTable.getSelectionModel().addListSelectionListener(e -> {
             removeButton.setEnabled(stringsTable.getSelectedRow() != -1);
@@ -293,14 +295,15 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         @Override
         public int getColumnCount() {
-            return 2;
+            return 3;
         }
 
         @Override
         public String getColumnName(int col) {
             switch (col) {
                 case 0: return "String";
-                case 1: return "LLM Rating Score";
+                case 1: return "Open Source Confidence";
+                case 2: return "Match Confidence";
             }
             return "";
         }
@@ -314,6 +317,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     if (s.resultsScore != null) {
                         return String.format("%.2f", s.resultsScore.floatValue());
                     }
+                    return "N/A";
+                case 2:
                     return (s.score != null) ? String.format("%.2f", s.score) : "N/A";
             }
             return null;
@@ -382,6 +387,27 @@ public class StringSniperComponentProvider extends ComponentProvider {
         getStringData().clear();
         getStringData().addAll(strings);
         getStringTableModel().fireTableDataChanged();
+    }
+
+    private static class MatchConfidenceRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            if (!isSelected) {
+                c.setBackground(table.getBackground());
+            }
+
+            if (column == 2 && value != null) {
+                String text = value.toString();
+                boolean hasMatch = !text.equals("N/A");
+                if (hasMatch && !isSelected) {
+                    c.setBackground(new Color(198, 239, 206));
+                }
+            }
+            return c;
+        }
     }
 
     private Path resolveHashDir(String hash) {
