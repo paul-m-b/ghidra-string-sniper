@@ -2,12 +2,10 @@ from llm_interact import LLM_INTERACT
 from gss_paths import results_json_path
 from collections import Counter
 from pathlib import Path
-import subprocess
 import logging
 import json
 import math
 import re
-import sys
 import hashlib
 import os
 
@@ -180,14 +178,4 @@ class STRING_PRIORITIZE:
 
         return output
 
-    def get_strings(self, binpath: str) -> list:
-        cmd = ["strings", "-a", "-n", "4", binpath]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        stdout = result.stdout
-        string_list = stdout.split("\n")
-        return self.select_strings(string_list)
-
-    def get_strings_stdin(self) -> list:
-        print("Enter strings:")
-        string_list = [line.rstrip() for line in sys.stdin]
-        return self.select_strings(string_list)
+    # Legacy helpers removed: get_strings / get_strings_stdin
