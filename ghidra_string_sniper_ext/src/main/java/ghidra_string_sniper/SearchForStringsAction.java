@@ -35,6 +35,8 @@ import docking.action.DockingAction;
 import docking.action.ToolBarData;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.services.ConsoleService;
+import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.listing.Data;
@@ -121,6 +123,9 @@ public class SearchForStringsAction extends DockingAction {
             @Override
             public void run(TaskMonitor monitor) {
                 AtomicReference<BufferedWriter> logWriterRef = new AtomicReference<>();
+                PluginTool tool = sscpFinal.getPluginTool();
+                final ConsoleService consoleService =
+                        tool != null ? tool.getService(ConsoleService.class) : null;
                 try {
                     monitor.initialize(100);
                     monitor.setProgress(0);
@@ -136,18 +141,18 @@ public class SearchForStringsAction extends DockingAction {
                             StandardOpenOption.CREATE,
                             StandardOpenOption.APPEND
                     ));
-                    logLine(logWriterRef.get(), "Pipeline start: " + programFinal.getName());
-                    logLine(logWriterRef.get(), "Output directory: " + outputDirFinal);
+                    logLine(logWriterRef.get(), consoleService, "Pipeline start: " + programFinal.getName());
+                    logLine(logWriterRef.get(), consoleService, "Output directory: " + outputDirFinal);
                     monitor.setProgress(5);
 
                     monitor.setMessage("Exporting strings...");
-                    logLine(logWriterRef.get(), "Exporting strings...");
+                    logLine(logWriterRef.get(), consoleService, "Exporting strings...");
                     Map<String, Address> addressMap = exportStringsRaw(programFinal, outputDirFinal);
-                    logLine(logWriterRef.get(), "Exported strings: " + addressMap.size());
+                    logLine(logWriterRef.get(), consoleService, "Exported strings: " + addressMap.size());
                     monitor.setProgress(15);
 
                     monitor.setMessage("Ranking strings (LLM)...");
-                    logLine(logWriterRef.get(), "Ranking strings (LLM)...");
+                    logLine(logWriterRef.get(), consoleService, "Ranking strings (LLM)...");
                     List<String> rankArgs = new ArrayList<>();
                     rankArgs.add("--strings");
                     rankArgs.add(outputDirFinal.resolve("strings_raw.json").toString());
@@ -157,7 +162,7 @@ public class SearchForStringsAction extends DockingAction {
                         rankArgs.add("--token");
                         rankArgs.add(keyPath);
                     }
-                    Consumer<String> pythonLog = line -> logLine(logWriterRef.get(), "[PY] " + line);
+                    Consumer<String> pythonLog = line -> logLine(logWriterRef.get(), consoleService, "[PY] " + line);
                     PythonRunner.RunResult rankResult = PythonRunner.runSystemPython(
                             "python",
                             "extension_interface/rank_strings.py",
@@ -177,18 +182,18 @@ public class SearchForStringsAction extends DockingAction {
                     if (!resultsFile.exists()) {
                         throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
                     }
-                    logLine(logWriterRef.get(), "results.json: " + resultsFile.getAbsolutePath());
+                    logLine(logWriterRef.get(), consoleService, "results.json: " + resultsFile.getAbsolutePath());
 
                     JsonObject resultsRoot =
                             JsonParser.parseString(Files.readString(resultsFile.toPath())).getAsJsonObject();
 
                     monitor.setMessage("Decompiling referenced functions...");
-                    logLine(logWriterRef.get(), "Decompiling referenced functions...");
+                    logLine(logWriterRef.get(), consoleService, "Decompiling referenced functions...");
                     writeDecomps(programFinal, addressMap, resultsRoot, outputDirFinal, monitor, 35, 40);
                     monitor.setProgress(75);
 
                     monitor.setMessage("Sourcegraph + function match...");
-                    logLine(logWriterRef.get(), "Sourcegraph + function match...");
+                    logLine(logWriterRef.get(), consoleService, "Sourcegraph + function match...");
                     List<String> analyzeArgs = new ArrayList<>();
                     analyzeArgs.add("--out");
                     analyzeArgs.add(outputDirFinal.toString());
@@ -215,7 +220,7 @@ public class SearchForStringsAction extends DockingAction {
                     if (!matchesFile.exists()) {
                         throw new IOException("MATCHES.json not found: " + matchesFile.getAbsolutePath());
                     }
-                    logLine(logWriterRef.get(), "MATCHES.json: " + matchesFile.getAbsolutePath());
+                    logLine(logWriterRef.get(), consoleService, "MATCHES.json: " + matchesFile.getAbsolutePath());
 
                     JsonObject matchesRoot =
                             JsonParser.parseString(Files.readString(matchesFile.toPath())).getAsJsonObject();
@@ -255,9 +260,9 @@ public class SearchForStringsAction extends DockingAction {
                         }
                         sscpFinal.applyDefaultSort();
                     });
-                    logLine(logWriterRef.get(), "Pipeline completed.");
+                    logLine(logWriterRef.get(), consoleService, "Pipeline completed.");
                 } catch (Exception e) {
-                    logLine(logWriterRef.get(), "Pipeline error: " + e.getMessage());
+                    logLine(logWriterRef.get(), consoleService, "Pipeline error: " + e.getMessage());
                     SwingUtilities.invokeLater(() ->
                             Msg.showError(SearchForStringsAction.this, null, "Pipeline Error", e.getMessage(), e)
                     );
@@ -477,11 +482,15 @@ public class SearchForStringsAction extends DockingAction {
         }
     }
 
-    private static void logLine(BufferedWriter writer, String message) {
+    private static void logLine(BufferedWriter writer, ConsoleService consoleService, String message) {
         String ts = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         String line = "[" + ts + "] " + message;
-        System.out.println(line);
         Msg.info(SearchForStringsAction.class, line);
+        if (consoleService != null) {
+            consoleService.println("StringSniper> " + line);
+        } else {
+            System.out.println(line);
+        }
         if (writer == null) {
             return;
         }

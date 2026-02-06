@@ -83,6 +83,10 @@ public class StringSniperComponentProvider extends ComponentProvider {
         return project.getProjectLocator().getProjectDir().toPath();
     }
 
+    public PluginTool getPluginTool() {
+        return pluginTool;
+    }
+
     public void addString(StringData string) {
         stringsTableModel.add(string);
     }
