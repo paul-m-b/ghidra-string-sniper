@@ -1,19 +1,25 @@
 package ghidra_string_sniper;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import javax.swing.JOptionPane;
@@ -114,6 +120,7 @@ public class SearchForStringsAction extends DockingAction {
         Task task = new Task("Ghidra String Sniper Pipeline", true, true, true) {
             @Override
             public void run(TaskMonitor monitor) {
+                AtomicReference<BufferedWriter> logWriterRef = new AtomicReference<>();
                 try {
                     monitor.initialize(100);
                     monitor.setProgress(0);
@@ -122,13 +129,25 @@ public class SearchForStringsAction extends DockingAction {
                         deleteDirectory(outputDirFinal);
                     }
                     Files.createDirectories(outputDirFinal);
+                    Path logPath = outputDirFinal.resolve("pipeline.log");
+                    logWriterRef.set(Files.newBufferedWriter(
+                            logPath,
+                            StandardCharsets.UTF_8,
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.APPEND
+                    ));
+                    logLine(logWriterRef.get(), "Pipeline start: " + programFinal.getName());
+                    logLine(logWriterRef.get(), "Output directory: " + outputDirFinal);
                     monitor.setProgress(5);
 
                     monitor.setMessage("Exporting strings...");
+                    logLine(logWriterRef.get(), "Exporting strings...");
                     Map<String, Address> addressMap = exportStringsRaw(programFinal, outputDirFinal);
+                    logLine(logWriterRef.get(), "Exported strings: " + addressMap.size());
                     monitor.setProgress(15);
 
                     monitor.setMessage("Ranking strings (LLM)...");
+                    logLine(logWriterRef.get(), "Ranking strings (LLM)...");
                     List<String> rankArgs = new ArrayList<>();
                     rankArgs.add("--strings");
                     rankArgs.add(outputDirFinal.resolve("strings_raw.json").toString());
@@ -138,11 +157,13 @@ public class SearchForStringsAction extends DockingAction {
                         rankArgs.add("--token");
                         rankArgs.add(keyPath);
                     }
+                    Consumer<String> pythonLog = line -> logLine(logWriterRef.get(), "[PY] " + line);
                     PythonRunner.RunResult rankResult = PythonRunner.runSystemPython(
                             "python",
                             "extension_interface/rank_strings.py",
                             rankArgs,
-                            0
+                            0,
+                            pythonLog
                     );
                     if (rankResult == null) {
                         throw new IOException("Python ranking timed out or failed to start.");
@@ -156,15 +177,18 @@ public class SearchForStringsAction extends DockingAction {
                     if (!resultsFile.exists()) {
                         throw new IOException("results.json not found: " + resultsFile.getAbsolutePath());
                     }
+                    logLine(logWriterRef.get(), "results.json: " + resultsFile.getAbsolutePath());
 
                     JsonObject resultsRoot =
                             JsonParser.parseString(Files.readString(resultsFile.toPath())).getAsJsonObject();
 
                     monitor.setMessage("Decompiling referenced functions...");
+                    logLine(logWriterRef.get(), "Decompiling referenced functions...");
                     writeDecomps(programFinal, addressMap, resultsRoot, outputDirFinal, monitor, 35, 40);
                     monitor.setProgress(75);
 
                     monitor.setMessage("Sourcegraph + function match...");
+                    logLine(logWriterRef.get(), "Sourcegraph + function match...");
                     List<String> analyzeArgs = new ArrayList<>();
                     analyzeArgs.add("--out");
                     analyzeArgs.add(outputDirFinal.toString());
@@ -176,7 +200,8 @@ public class SearchForStringsAction extends DockingAction {
                             "python",
                             "extension_interface/analyze_strings.py",
                             analyzeArgs,
-                            0
+                            0,
+                            pythonLog
                     );
                     if (analyzeResult == null) {
                         throw new IOException("Python analysis timed out or failed to start.");
@@ -190,6 +215,7 @@ public class SearchForStringsAction extends DockingAction {
                     if (!matchesFile.exists()) {
                         throw new IOException("MATCHES.json not found: " + matchesFile.getAbsolutePath());
                     }
+                    logLine(logWriterRef.get(), "MATCHES.json: " + matchesFile.getAbsolutePath());
 
                     JsonObject matchesRoot =
                             JsonParser.parseString(Files.readString(matchesFile.toPath())).getAsJsonObject();
@@ -229,10 +255,21 @@ public class SearchForStringsAction extends DockingAction {
                         }
                         sscpFinal.applyDefaultSort();
                     });
+                    logLine(logWriterRef.get(), "Pipeline completed.");
                 } catch (Exception e) {
+                    logLine(logWriterRef.get(), "Pipeline error: " + e.getMessage());
                     SwingUtilities.invokeLater(() ->
                             Msg.showError(SearchForStringsAction.this, null, "Pipeline Error", e.getMessage(), e)
                     );
+                } finally {
+                    BufferedWriter logWriter = logWriterRef.get();
+                    if (logWriter != null) {
+                        try {
+                            logWriter.flush();
+                            logWriter.close();
+                        } catch (IOException ignored) {
+                        }
+                    }
                 }
             }
         };
@@ -437,6 +474,22 @@ public class SearchForStringsAction extends DockingAction {
             return sb.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("MD5 not available", e);
+        }
+    }
+
+    private static void logLine(BufferedWriter writer, String message) {
+        String ts = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        String line = "[" + ts + "] " + message;
+        System.out.println(line);
+        Msg.info(SearchForStringsAction.class, line);
+        if (writer == null) {
+            return;
+        }
+        try {
+            writer.write(line);
+            writer.newLine();
+            writer.flush();
+        } catch (IOException ignored) {
         }
     }
 }
