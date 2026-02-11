@@ -128,6 +128,7 @@ public class HelpAction extends DockingAction {
 
 				//Add members to page
 				creditsPage.add(createPersonLink.apply("Paul Biernat '27 (Project Lead)", "https://github.com/paul-m-b"));
+				creditsPage.add(createPersonLink.apply("Jaden Bowers '28", "https://github.com/Jaden-Bowers"));
 				creditsPage.add(createPersonLink.apply("Jack J '28", "https://github.com/JackJ30"));
 				creditsPage.add(createPersonLink.apply("Jack A '28", "https://github.com/J-AngeI"));
 				creditsPage.add(createPersonLink.apply("Cory Tsang '26", "https://github.com/CoryTsang"));
