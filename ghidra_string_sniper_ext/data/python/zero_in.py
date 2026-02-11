@@ -1,5 +1,4 @@
 from function_match import FUNCTION_MATCH
-from gss_paths import matches_json_path
 import logging
 import json
 import subprocess
@@ -16,7 +15,7 @@ class ZERO_IN():
     Goes through final GSS_results/MATCHES.json to find unique matches with confidence >= X
     '''
     def find_repos(self):
-        with open(matches_json_path(), 'r') as f:
+        with open('GSS_results/MATCHES.json', 'r') as f:
             data = json.load(f)
 
         repos = set()
