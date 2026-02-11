@@ -72,6 +72,34 @@ Outputs:
 - It first checks the current run's `outputDir/GSS_Results/<hash>`.
 - If not found, it scans `<project>/gss_runs/*/GSS_Results/<hash>`.
 
+## Sourcegraph Query Formatting
+
+To maximize matches, raw strings from `results.json` are converted into a Sourcegraph
+`content:"..."` filter and forced into keyword mode. This avoids multiline parsing
+issues and ensures backslashes are escaped correctly.
+
+Workflow (per string):
+
+1. **Trim trailing whitespace** (`rstrip`).
+2. **Convert control chars** to C-style escapes so the query matches source code literals:
+   - `\r` -> `\\r`
+   - `\n` -> `\\n`
+   - `\t` -> `\\t`
+3. **Quote/escape safely** using `json.dumps` to produce `content:"..."`.
+4. **Force keyword mode** and limit to C/C++:
+   ```
+   type:file patterntype:keyword count:5 (lang:c OR lang:c++) content:"..."
+   ```
+5. **CRLF fallback:** if the cooked string contains `\n` but not `\r`, query with
+   an alternate variant where `\n` is replaced by `\r\n` using `OR`.
+
+Example query:
+
+```
+type:file patterntype:keyword count:5 (lang:c OR lang:c++)
+content:"HTTP/1.0 400 Bad Request\\nServer: CS241Serv v0.1\\nContent-Type: text/html\\n\\n"
+```
+
 ## Logging
 
 - A per-run log file is written to `pipeline.log` inside the run output directory.

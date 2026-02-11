@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import time
 import requests
 from gss_paths import results_json_path, sourcegraph_dir
@@ -16,49 +15,33 @@ class SOURCEGRAPH_QUERY:
     Also calls get_readme if 4th argument is true.
     """
 
-    def _escape_controls(self, query: str) -> str:
-        # Convert real control chars to escaped sequences for code-search.
-        query = query.replace("\\", "\\\\")
-        query = query.replace("\r\n", "\\\\r\\\\n")
-        query = query.replace("\n", "\\\\n")
-        query = query.replace("\r", "\\\\r")
-        query = query.replace("\t", "\\\\t")
-        return query
+    def stringify_for_c_source(self, s: str) -> str:
+        if s is None:
+            return ""
+        s = s.rstrip()
+        s = s.replace("\r", r"\r").replace("\n", r"\n").replace("\t", r"\t")
+        return s
 
-    def _collapse_whitespace(self, query: str) -> str:
-        query = query.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("\t", " ")
-        query = re.sub(r"\s+", " ", query).strip()
-        return query
+    def to_sourcegraph_content_filter(self, raw: str) -> str:
+        cooked = self.stringify_for_c_source(raw)
+        return f"content:{json.dumps(cooked)}"
 
-    def query_variants(self, query: str) -> list[str]:
-        if query is None:
-            return []
-        seen = set()
-        variants = []
+    def build_sg_query(self, raw: str, match_count: int) -> str:
+        content = self.to_sourcegraph_content_filter(raw)
 
-        def add(val: str):
-            if not val:
-                return
-            if val in seen:
-                return
-            seen.add(val)
-            variants.append(val)
+        cooked = self.stringify_for_c_source(raw)
+        if r"\n" in cooked and r"\r" not in cooked:
+            cooked_crlf = cooked.replace(r"\n", r"\r\n")
+            content_crlf = f"content:{json.dumps(cooked_crlf)}"
+            content = f"({content} OR {content_crlf})"
 
-        raw = query
-        add(raw)
+        return (
+            f"type:file patterntype:keyword count:{match_count} "
+            f"(lang:c OR lang:c++) "
+            f"{content}"
+        )
 
-        escaped = self._escape_controls(raw)
-        add(escaped)
-
-        collapsed = self._collapse_whitespace(raw)
-        add(collapsed)
-
-        if "\n" in raw or "\r" in raw:
-            first_line = raw.splitlines()[0].strip()
-            add(first_line)
-
-        return variants
-    def get_repos(self, query: str, match_count: str, query_hash: str) -> set():
+    def get_repos(self, query: str, query_hash: str) -> set():
         """
         with open(input_file_name, 'r') as file:
             search_terms = []
@@ -77,8 +60,6 @@ class SOURCEGRAPH_QUERY:
                     query = " ".join(search_terms)
         """
 
-
-        query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
 
         url: str = "https://sourcegraph.com/.api/graphql"
         
@@ -108,11 +89,11 @@ class SOURCEGRAPH_QUERY:
             }
             ''',
             "variables": {
-                "query": query_filtered
+                "query": query
             }
         }
 
-        print(f"\nSearching for {query[:100]}")
+        print(f"\nSearching for {query[:120]}")
         
         try:
             response: requests.Response = requests.post(url, json=payload, timeout=30)
@@ -172,20 +153,8 @@ class SOURCEGRAPH_QUERY:
             useful_strings = json.load(file)
 
         for string in useful_strings.keys():
-            query_hash = useful_strings[string]["hash"]
-            variants = self.query_variants(string)
-            if not variants:
-                continue
-            found = False
-            for idx, q in enumerate(variants):
-                repos = self.get_repos(q, 5, query_hash)
-                if repos:
-                    if idx > 0:
-                        print(f"Fallback match used variant {idx} for hash {query_hash}")
-                    found = True
-                    break
-            if not found:
-                print(f"No Sourcegraph matches for any variant (hash={query_hash})")
+            sg_query = self.build_sg_query(string, match_count=5)
+            self.get_repos(sg_query, useful_strings[string]["hash"])
 
 
 """
