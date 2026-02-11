@@ -6,6 +6,7 @@ public class StringData {
     public Float score;
     public Integer resultsScore;
     public Float entropy;
+    public String matchPath;
 
     public StringData(String value, String address) {
         this.value = value;

@@ -74,14 +74,20 @@ class SOURCEGRAPH_QUERY:
                             ... on FileMatch {
                                 repository {
                                     name
+                                    url
                                 }
                                 file {
                                     name
+                                    path
+                                    url
                                     content
                                 }
                                 lineMatches {
                                     lineNumber
+                                    preview
+                                    offsetAndLengths
                                 }
+                                limitHit
                             }
                         }
                     }
@@ -117,7 +123,8 @@ class SOURCEGRAPH_QUERY:
                     matched_lines = set(line_match['lineNumber'] for line_match in match['lineMatches'])
 
                     matched_file: str = match['file']['name'].split('.')[0]
-                    repo_name: str = match['repository']['name'].split('/')[-1]
+                    repo_full: str = match['repository']['name']
+                    repo_name: str = repo_full.split('/')[-1]
                     file_name: str = repo_name + '_' + matched_file + '.txt'
                     '''
                     folder_name: str = query.encode("utf-8")
@@ -131,13 +138,23 @@ class SOURCEGRAPH_QUERY:
                     for num in matched_lines:
                         match_msg += str(num+6) + " "
 
+                    repo_url = match['repository'].get('url') if match.get('repository') else None
+                    file_url = match['file'].get('url') if match.get('file') else None
+                    file_path = match['file'].get('path') if match.get('file') else None
+                    line_numbers = sorted(line_match['lineNumber'] + 1 for line_match in match['lineMatches'])
+
                     base_dir = sourcegraph_dir() / folder_name
                     base_dir.mkdir(parents=True, exist_ok=True)
 
                     with open(base_dir / file_name, 'w', encoding='utf-8', errors='replace') as file:
                         file.write("-----------GSS-----------\n" + 
-                                  "query: " + query + "\n" + 
-                                  match_msg + "\n-------------------------\n\n" + 
+                                  "query: " + query + "\n" +
+                                  "repo: " + repo_full + "\n" +
+                                  "repo_url: " + (repo_url or "") + "\n" +
+                                  "file_path: " + (file_path or "") + "\n" +
+                                  "file_url: " + (file_url or "") + "\n" +
+                                  "line_matches: " + (" ".join(str(n) for n in line_numbers)) + "\n" +
+                                  match_msg + "\n-------------------------\n\n" +
                                   match['file']['content'])
             
             print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")

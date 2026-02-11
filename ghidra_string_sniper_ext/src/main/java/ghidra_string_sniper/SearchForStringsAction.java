@@ -234,20 +234,26 @@ public class SearchForStringsAction extends DockingAction {
                         String hash = rObj.get("hash").getAsString();
 
                         Float matchScore = null;
+                        String matchPath = null;
                         if (matchesRoot.has(hash)) {
                             JsonArray arr = matchesRoot.getAsJsonArray(hash);
                             if (arr.size() > 1) {
                                 matchScore = arr.get(1).getAsFloat();
                             }
+                            if (arr.size() > 0 && !arr.get(0).isJsonNull()) {
+                                matchPath = arr.get(0).getAsString();
+                            }
                         }
 
-                        newData.add(new StringData(
+                        StringData sd = new StringData(
                                 extractedValue,
                                 hash,
                                 matchScore,
                                 resultsScore,
                                 entropy
-                        ));
+                        );
+                        sd.matchPath = matchPath;
+                        newData.add(sd);
                     }
                     monitor.setProgress(100);
 

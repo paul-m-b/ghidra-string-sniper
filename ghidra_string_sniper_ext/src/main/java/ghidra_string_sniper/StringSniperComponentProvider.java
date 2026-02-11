@@ -7,6 +7,8 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -125,14 +127,24 @@ public class StringSniperComponentProvider extends ComponentProvider {
         repoPanel.setOpaque(false);
 
         JLabel repoLabel = new JLabel("URL of repository where code appears: ");
-        JLabel linkText = new JLabel("<html><u>Visit Website</u></html>");
+        JLabel linkText = new JLabel("<html><u>Visit Repo</u></html>");
         linkText.setForeground(Color.BLUE);
         linkText.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         linkText.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+                String matchPath = result.string.matchPath;
+                if (matchPath == null || matchPath.isBlank()) {
+                    JOptionPane.showMessageDialog(accordionContent, "No Sourcegraph match available.", "No Match", JOptionPane.INFORMATION_MESSAGE);
+                    return;
+                }
+                String url = extractSourcegraphUrl(Path.of(matchPath));
+                if (url == null || url.isBlank()) {
+                    JOptionPane.showMessageDialog(accordionContent, "No Sourcegraph URL found for this match.", "URL Not Found", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
                 try {
-                    Desktop.getDesktop().browse(new URI("https://www.google.com"));
+                    Desktop.getDesktop().browse(new URI(url));
                 } catch (Exception ex) {
                     Msg.showError(StringSniperComponentProvider.this, null,
                             "Failed to open URL", ex.getMessage(), ex);
@@ -141,12 +153,12 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
             @Override
             public void mouseEntered(MouseEvent e) {
-                linkText.setText("<html><u><b>Visit Website</b></u></html>");
+                linkText.setText("<html><u><b>Visit Repo</b></u></html>");
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                linkText.setText("<html><u>Visit Website</u></html>");
+                linkText.setText("<html><u>Visit Repo</u></html>");
             }
         });
 
@@ -446,5 +458,68 @@ public class StringSniperComponentProvider extends ComponentProvider {
             return null;
         }
         return null;
+    }
+
+    private static String extractSourcegraphUrl(Path matchFile) {
+        if (matchFile == null || !Files.exists(matchFile)) {
+            return null;
+        }
+
+        String repo = null;
+        String repoUrl = null;
+        String filePath = null;
+        String fileUrl = null;
+        String firstLine = null;
+
+        try (BufferedReader reader = Files.newBufferedReader(matchFile, StandardCharsets.UTF_8)) {
+            String line;
+            int linesRead = 0;
+            while ((line = reader.readLine()) != null && linesRead < 50) {
+                linesRead++;
+                if (line.startsWith("repo: ")) {
+                    repo = line.substring("repo: ".length()).trim();
+                } else if (line.startsWith("repo_url: ")) {
+                    repoUrl = line.substring("repo_url: ".length()).trim();
+                } else if (line.startsWith("file_path: ")) {
+                    filePath = line.substring("file_path: ".length()).trim();
+                } else if (line.startsWith("file_url: ")) {
+                    fileUrl = line.substring("file_url: ".length()).trim();
+                } else if (line.startsWith("line_matches: ")) {
+                    String rest = line.substring("line_matches: ".length()).trim();
+                    if (!rest.isEmpty()) {
+                        firstLine = rest.split("\\s+")[0];
+                    }
+                }
+                if (fileUrl != null && !fileUrl.isBlank()) {
+                    return normalizeSourcegraphUrl(fileUrl);
+                }
+            }
+        } catch (IOException e) {
+            return null;
+        }
+
+        if (repo == null || repo.isBlank() || filePath == null || filePath.isBlank()) {
+            return normalizeSourcegraphUrl(repoUrl);
+        }
+
+        String url = "https://sourcegraph.com/" + repo + "/-/blob/" + filePath;
+        if (firstLine != null && !firstLine.isBlank()) {
+            url = url + "?L" + firstLine;
+        }
+        return url;
+    }
+
+    private static String normalizeSourcegraphUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String trimmed = url.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        if (trimmed.startsWith("/")) {
+            return "https://sourcegraph.com" + trimmed;
+        }
+        return trimmed;
     }
 }
