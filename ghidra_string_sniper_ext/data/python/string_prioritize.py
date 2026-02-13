@@ -281,6 +281,7 @@ class STRING_PRIORITIZE:
     def get_ghidra_strings(self, binary_path: str, lang: str=None) -> list[str]:
         logging.info("Loading binary into ghidra..")
         with pyghidra.open_program(binary_path, analyze=True, language=lang) as flat_api:
+            logging.info("OPENED PROPERLY")
             from ghidra.app.decompiler import DecompInterface
             from ghidra.util.task import ConsoleTaskMonitor
 

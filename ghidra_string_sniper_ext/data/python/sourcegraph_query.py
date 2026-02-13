@@ -34,8 +34,11 @@ class SOURCEGRAPH_QUERY:
                     query = " ".join(search_terms)
         """
 
-
-        query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
+        pattern = query
+        query_filtered = (
+            f'type:file lang:c++ lang:c count:{match_count} '
+            f'content:{json.dumps(pattern)}'
+        )
 
         url: str = "https://sourcegraph.com/.api/graphql"
         
@@ -167,7 +170,7 @@ def get_readme(repo_url: str):
     }
 
     try:
-        response: Response = requests.post(url, json=payload, timeout=30)
+        response = requests.post(url, json=payload, timeout=30)
         response.raise_for_status()
         data = response.json()
         results = data['data']['search']['results']
