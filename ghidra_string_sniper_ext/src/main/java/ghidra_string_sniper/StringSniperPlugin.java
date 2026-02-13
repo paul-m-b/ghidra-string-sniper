@@ -13,8 +13,9 @@ import ghidra.program.model.listing.Program;
 	status = PluginStatus.STABLE,
 	packageName = "Ghidra String Sniper",
 	category = PluginCategoryNames.COMMON,
-	shortDescription = "Plugin short description goes here.",
-	description = "Plugin long description goes here."
+	shortDescription = "Rank strings and map them to open-source code.",
+	description = "Extracts strings from the current program, ranks them with LLM-assisted heuristics, "
+			+ "queries Sourcegraph for open-source matches, and links results to decompiled context."
 )
 //@formatter:on
 // plugin class
@@ -45,4 +46,3 @@ public class StringSniperPlugin extends ProgramPlugin {
 		}
 	}
 }
-

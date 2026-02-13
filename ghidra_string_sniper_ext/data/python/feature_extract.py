@@ -1,4 +1,5 @@
 from llm_interact import LLM_INTERACT
+from gss_paths import matches_json_path, decomps_dir
 import logging
 import json
 
@@ -21,7 +22,7 @@ class FEATURE_EXTRACT:
 
     def open_file(self, path: str, mode: str) -> str:
         try:
-            with open(path, mode) as f:
+            with open(path, mode, encoding="utf-8", errors="replace") as f:
                 return f.read()
         except Exception as e:
             logging.critical(f"Error opeing `{path}`.")
@@ -57,8 +58,8 @@ class FEATURE_EXTRACT:
         content = response["choices"][0]["message"]["content"]
         final_content = final_content + content + "\n"
 
-        fpath = f"GSS_decomps/{str_hash}/EXTRACTIONS.txt"
-        with open(fpath, "w") as f:
+        fpath = decomps_dir() / str_hash / "EXTRACTIONS.txt"
+        with open(fpath, "w", encoding="utf-8", errors="replace") as f:
             f.write(content)
             logging.info(f"Wrote proposals to {fpath}")
 
@@ -69,7 +70,7 @@ class FEATURE_EXTRACT:
     def iterate_results(self):
         logging.info("Starting feature extraction...")
 
-        match_file_content = self.open_file("GSS_results/MATCHES.json", "r")
+        match_file_content = self.open_file(str(matches_json_path()), "r")
         matches = json.loads(match_file_content)
 
         for str_hash in matches:
@@ -78,8 +79,7 @@ class FEATURE_EXTRACT:
             if (confidence < self.CONFIDENCE_THRESHOLD):
                 continue
 
-            decomp_path = f"GSS_decomps/{str_hash}/decomp.txt"
+            decomp_path = str(decomps_dir() / str_hash / "decomp.txt")
 
             logging.info(f"Analyzing {source_path}")
             self.extract_features(str_hash, decomp_path, source_path)
-

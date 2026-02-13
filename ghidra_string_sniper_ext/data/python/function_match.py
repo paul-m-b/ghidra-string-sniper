@@ -1,4 +1,5 @@
 from llm_interact import LLM_INTERACT
+from gss_paths import matches_json_path, sourcegraph_dir, decomps_dir
 import logging
 import os
 import json
@@ -15,7 +16,7 @@ class FUNCTION_MATCH:
 
     def open_file(self, path: str, mode: str) -> str:
         try:
-            with open(path, mode) as f:
+            with open(path, mode, encoding="utf-8", errors="replace") as f:
                 return f.read()
         except Exception as e:
             logging.critical(f"Error opening `{path}`.")
@@ -95,19 +96,21 @@ class FUNCTION_MATCH:
     '''
     def iterate_through_results(self):
         out_dict = {}
-        root = Path("./GSS_results")
+        root = sourcegraph_dir()
         for dirpath, dirnames, filenames in os.walk(root):
-            if (dirpath == "GSS_results"):
+            if Path(dirpath) == root:
                 continue
             for ind, fname in enumerate(filenames):
                 filenames[ind] = dirpath+"/"+fname
 
-            directory = dirpath.split("/")[1]
-            decomp_path = f"GSS_decomps/{directory}/decomp.txt"
+            directory = Path(dirpath).name
+            decomp_path = decomps_dir() / directory / "decomp.txt"
+            if not decomp_path.exists():
+                out_dict[directory] = ["", 0.0]
+                continue
 
-            match_results = self.find_matching_func(decomp_path, filenames)
+            match_results = self.find_matching_func(str(decomp_path), filenames)
             out_dict[directory] = match_results
         
-        with open("./GSS_results/MATCHES.json", "w") as f:
+        with open(matches_json_path(), "w") as f:
             json.dump(out_dict, f, indent=4)
-

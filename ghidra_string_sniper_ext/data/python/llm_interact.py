@@ -1,6 +1,9 @@
-import requests
 import json
 import logging
+import os
+from pathlib import Path
+
+import requests
 
 class LLM_INTERACT:
     def __init__(self, 
@@ -10,12 +13,18 @@ class LLM_INTERACT:
         self.ENDPOINT = endpoint
 
     def read_key(self, path: str) -> str:
+        env_token = os.environ.get("GSS_TOKEN", "").strip()
+        if env_token:
+            env_path = Path(env_token)
+            if env_path.exists():
+                return env_path.read_text().strip()
+            return env_token
+
         with open(path, "r") as f:
             try:
                 return f.read().strip()
-            except:
+            except Exception:
                 raise KeyError
-        return
 
     def query_LLM(self, _model: str, _messages: list, _tools: list=[], _response_format: dict={}) -> object:
         data={

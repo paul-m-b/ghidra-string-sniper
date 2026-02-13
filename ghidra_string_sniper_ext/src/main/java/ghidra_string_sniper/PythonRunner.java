@@ -5,6 +5,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 import generic.jar.ResourceFile;
 
@@ -32,6 +33,15 @@ public class PythonRunner {
 
 	public static RunResult runSystemPython(String scriptDir, String scriptName, List<String> args, long timeoutSec)
 		throws IOException, InterruptedException {
+		return runSystemPython(scriptDir, scriptName, args, timeoutSec, null);
+	}
+
+	public static RunResult runSystemPython(String scriptDir,
+			String scriptName,
+			List<String> args,
+			long timeoutSec,
+			Consumer<String> lineHandler)
+		throws IOException, InterruptedException {
 
 		Path tempDir = getTempDirFromResourceDir(scriptDir);
 		List<String> cmd = new ArrayList<>();
@@ -44,7 +54,13 @@ public class PythonRunner {
 
 		StringBuilder out = new StringBuilder();
 		try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-			r.lines().forEach(l -> out.append(l).append(System.lineSeparator()));
+			String line;
+			while ((line = r.readLine()) != null) {
+				out.append(line).append(System.lineSeparator());
+				if (lineHandler != null) {
+					lineHandler.accept(line);
+				}
+			}
 		}
 
 		if (timeoutSec > 0 && !p.waitFor(timeoutSec, TimeUnit.SECONDS)) { p.destroyForcibly(); return null; }
