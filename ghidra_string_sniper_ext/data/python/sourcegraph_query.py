@@ -60,6 +60,11 @@ class SOURCEGRAPH_QUERY:
                     query = " ".join(search_terms)
         """
 
+        pattern = query
+        query_filtered = (
+            f'type:file lang:c++ lang:c count:{match_count} '
+            f'content:{json.dumps(pattern)}'
+        )
 
         url: str = "https://sourcegraph.com/.api/graphql"
         
