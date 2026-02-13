@@ -1,19 +1,16 @@
 from llm_interact import LLM_INTERACT
+from gss_paths import results_json_path
 from collections import Counter
 from pathlib import Path
-import subprocess
 import logging
 import json
 import math
 import re
-import sys
 import hashlib
 import os
-import re
-
-import pyghidra
 
 logging.basicConfig(level=logging.INFO)
+
 
 class STRING_PRIORITIZE:
     def __init__(self):
@@ -21,61 +18,21 @@ class STRING_PRIORITIZE:
         self.MODEL = "openai/gpt-4o-mini"
         self.LLM = LLM_INTERACT()
         self.MAX_STRING_COUNT = 10
-        self.MAX_DEPTH = 4
         self.MAX_RETRIES = 2
 
-    '''
-    Calculate the shannon entropy for a particular string.
-    '''
     def shannon_entropy(self, s: str):
-        if not s: return 0.0
+        if not s:
+            return 0.0
         counts = Counter(s)
         n = len(s)
-        return -sum((c/n) * math.log2(c/n) for c in counts.values())
+        return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
-    '''
-    Calculate the shannon entropy for each string and return its sorted form.
-    '''
     def get_shannon_list(self, string_list: list) -> list:
         shannon_dict = {}
         for string in string_list:
             shannon_dict[string] = self.shannon_entropy(string)
-        sorted_strings = sorted(shannon_dict, key=shannon_dict.get, reverse=True)
+        return sorted(shannon_dict, key=shannon_dict.get, reverse=True)
 
-        return sorted_strings
-
-    '''
-    Returns list of strings containing common opensource signatures.
-    Also removes the matched strings from the list.
-    '''
-    def get_opensource_strings(self, string_list: list) -> list:
-        opensource_strings = {
-            "openssl": ["SSL_", "TLS_", "RSA_", "EC_", "BIO_", "X509_","OPENSSL_", "EVP_", "MD5_", "SHA256_"],
-            "zlib": ["zlib_version", "deflate", "inflate", "gz"],
-            "libcurl": ["curl_", "CURLOPT_", "CURLINFO_"],
-            "boost": ["boost::", "_bi_", "boost_"],
-            "qt": ["QObject", "QString", "QtCore", "qMain"],
-            "opengl": ["glEnable", "glVertex", "GL_", "glu"],
-            "sqlite": ["sqlite3_", "SQLITE_"]
-        }
-
-        for catagory, patterns in opensource_strings.items():
-            matches = []
-            for string in string_list:
-                for pattern in patterns:
-                    if pattern.lower() in string.lower():
-                        string_list.remove(string)
-                        matches.append(string)
-                        break
-
-        return matches
-
-    '''
-    Removes common strings that will typically show up in binaries.
-    These are strings that may return as high entropy, but we know are useless for our purposes.
-
-    could this be turned into a map or something else for O(1)? `in` is a O(n) probably
-    '''
     def remove_common_strings(self, string_list: list) -> list:
         common_patterns = [
             "abcdefghijklmnopqrstuvwxyz",
@@ -88,20 +45,15 @@ class STRING_PRIORITIZE:
             "0987654321",
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
         ]
-        
+
         filtered = []
         for string in string_list:
             string_lower = string.lower()
             is_common = any(pattern in string_lower for pattern in common_patterns)
-            
             if not is_common:
                 filtered.append(string)
-                
         return filtered
-    
-    '''
-    Filter strings based on reasonable entropy ranges for meaningful text
-    '''
+
     def filter_by_entropy(self, string_list: list, min_entropy=2.0, max_entropy=5.5) -> list:
         filtered = []
         for string in string_list:
@@ -110,113 +62,78 @@ class STRING_PRIORITIZE:
                 filtered.append(string)
         return filtered
 
-    '''
-    Check if string has reasonable mix of character types
-    '''
     def has_reasonable_character_distribution(self, string_list: list) -> list:
         filtered = []
-
         for string in string_list:
             alpha_count = sum(1 for c in string if c.isalpha())
             digit_count = sum(1 for c in string if c.isdigit())
             special_count = len(string) - alpha_count - digit_count
-            
-            # Reasonable strings should have decent alpha content
-            # and not be dominated by special characters
+
             alpha_ratio = alpha_count / len(string)
             special_ratio = special_count / len(string)
-            
+
             if alpha_ratio > 0.3 and special_ratio < 0.65:
                 filtered.append(string)
-
         return filtered
 
-    '''
-    Filter out strings that match useless patterns
-    '''
     def filter_patterns(self, string_list: list) -> list:
         patterns_to_filter = [
-            r'^[a-z]+$',  # All lowercase sequential
-            r'^[A-Z]+$',  # All uppercase sequential  
-            r'^[0-9]+$',  # All digits
-            r'^[!-~]+$',  # All printable ASCII in order
-            r'^[A-Za-z0-9!-~]+$',  # All printable ASCII ranges
-            r'^(.{1,3})\1+$',  # Repeated short sequences
+            r'^[a-z]+$',
+            r'^[A-Z]+$',
+            r'^[0-9]+$',
+            r'^[!-~]+$',
+            r'^[A-Za-z0-9!-~]+$',
+            r'^(.{1,3})\1+$',
         ]
-        
+
         filtered = []
         for string in string_list:
             is_bad_pattern = any(re.match(pattern, string) for pattern in patterns_to_filter)
-            
             if not is_bad_pattern:
                 filtered.append(string)
-                
         return filtered
 
-    '''
-    For now, uses strings for ease of development/testing.
-    TODO: Connect with ghidra to get strings from it.
-        - less dependancies. 
-        - this is a ghidra extension ultimately, so why not use ghidra instead of strings
+    def select_strings(self, string_list: list) -> list:
+        if not string_list:
+            return []
+        cleaned = [s for s in string_list if isinstance(s, str) and s.strip()]
+        cleaned = self.remove_common_strings(cleaned)
+        cleaned = self.filter_patterns(cleaned)
+        cleaned = self.filter_by_entropy(cleaned)
+        cleaned = self.has_reasonable_character_distribution(cleaned)
+        cleaned = self.get_shannon_list(cleaned)
+        return cleaned[:self.MAX_STRING_COUNT]
 
-    Get strings, do non-LLM prioritization, then return a curated list of strings to pass to LLM
-    '''
-    def get_strings(self, binpath: str) -> list:
-        cmd = ["strings","-a","-n","4",binpath]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        stdout = result.stdout
-        string_list = stdout.split("\n")
-
-        string_list = self.remove_common_strings(string_list)
-        string_list = self.filter_patterns(string_list) 
-        string_list = self.filter_by_entropy(string_list)
-        string_list = [s for s in string_list if self.has_reasonable_character_distribution(s)]
-        string_list = self.get_shannon_list(string_list)
-        string_list = string_list[:self.MAX_STRING_COUNT]
-
-        return string_list
-    
-    '''
-    Get strings from stdin, do non-LLM prioritization, then return a curated list of strings to pass to LLM
-    '''
-    def get_strings_stdin(self) -> list:
-        print("Enter strings:")
-        string_list = [line.rstrip() for line in sys.stdin]
-
-        string_list = self.remove_common_strings(string_list)
-        string_list = self.filter_patterns(string_list) 
-        string_list = self.filter_by_entropy(string_list)
-        string_list = [s for s in string_list if self.has_reasonable_character_distribution(s)]
-        string_list = self.get_shannon_list(string_list)
-        string_list = string_list[:self.MAX_STRING_COUNT]
-
-        return string_list
-    
-
-    '''
-    Simply retrieve a text file's contents.
-    '''
     def get_prompt(self, prompt_path: str) -> str:
+        p = Path(prompt_path)
+        if not p.exists():
+            p = Path(__file__).parent / prompt_path
         try:
-            with open(prompt_path, "r") as f:
-                return (f.read())
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
         except Exception as e:
             logging.critical(f"Getting prompt `{prompt_path}` failed.")
             raise e
 
+    def normalize_string(self, s: str) -> str:
+        s = s.replace("\\n", "").replace("\\t", "").replace("\\r", "")
+        return re.sub(r"\s+", "", s)
 
-    '''
-    Given a binary path, extract all strings from ghidra, perform non-LLM heuristics to 
-    order them and then pass into an LLM query for final reordering.
-    '''
-    def prioritize_strings(self, binpath: str, lang: str=None, retries: int=0):
+    def compute_hash(self, s: str) -> str:
+        normalized = self.normalize_string(s)
+        md5_hash = hashlib.md5()
+        md5_hash.update(normalized.encode("utf-8"))
+        return md5_hash.hexdigest()
+
+    def prioritize_strings_list(self, string_list: list, retries: int = 0):
         system_prompt = self.get_prompt("cfg/strprioritize_system.txt")
-        user_prompt = str(self.get_ghidra_strings(binpath, lang=lang))
+        curated = self.select_strings(string_list)
+        id_to_string = {str(i): s for i, s in enumerate(curated)}
+        user_prompt = "\n".join([f"{i}: {s}" for i, s in enumerate(curated)])
 
         messages = [
-            {"role":"system","content":system_prompt},
-            {"role":"user","content":user_prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ]
 
         logging.info("Starting reordering LLM query...")
@@ -224,53 +141,58 @@ class STRING_PRIORITIZE:
         response = self.LLM.query_LLM(self.MODEL, messages, [])
         try:
             content = response["choices"][0]["message"]["content"].split("\n")
-        except:
-            if (retries >= self.MAX_RETRIES):
+        except Exception as e:
+            if retries >= self.MAX_RETRIES:
                 raise e
-            else:
-                logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
-
-                tries = retries
-                language = lang 
-                self.prioritize_strings(binpath, lang=language, retries=tries+1)
-
-
-        #TODO THIS SHOULD NOT BE USING STRING SPLICING. AT LEAST SPLIT THE STRING AND GRAB THE LAST PART OR SOMETHING
-        # WILL FIX LATER
+            logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
+            return self.prioritize_strings_list(string_list, retries=retries + 1)
 
         output = {}
+        normalized_map = {self.normalize_string(s): s for s in curated}
         logging.info(content)
-        for string in content:
-            string = string.split("--GSS_DELIM--")
+        for line in content:
+            if "--GSS_DELIM--" not in line:
+                continue
+            parts = line.split("--GSS_DELIM--", 1)
+            raw = parts[0].strip()
+            score_text = parts[1].strip()
+            if not raw:
+                continue
 
-            actual_string = string[0]
-            actual_string = self.normalize_string(actual_string)
-            folder_name = actual_string.encode("utf-8")
-            md5_hash = hashlib.md5()
-            md5_hash.update(folder_name)
-            folder_name = str(md5_hash.hexdigest())
-            
             try:
-                confidence_value = int(string[1])
+                confidence_value = int(score_text)
             except ValueError as e:
-                if (retries >= self.MAX_RETRIES):
+                if retries >= self.MAX_RETRIES:
                     raise e
-                else:
-                    logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
+                logging.critical(f"LLM Failure. Restarting Prioritize Strings.\n\t{e}")
+                return self.prioritize_strings_list(string_list, retries=retries + 1)
 
-                    tries = retries
-                    language = lang 
-                    self.prioritize_strings(binpath, lang=language, retries=tries+1)
+            string_value = None
+            match = re.search(r"\b(\d+)\b", raw)
+            if match and match.group(1) in id_to_string:
+                string_value = id_to_string[match.group(1)]
+            elif raw in id_to_string:
+                string_value = id_to_string[raw]
+            elif raw in curated:
+                string_value = raw
+            else:
+                normalized = self.normalize_string(raw)
+                string_value = normalized_map.get(normalized)
 
-            output[string[0]] = {
-                    "confidence" : int(string[1]),
-                    "entropy" : self.shannon_entropy(string[0]),
-                    "hash": folder_name
+            if string_value is None:
+                logging.warning("LLM returned unknown id/string: %s", raw)
+                continue
+
+            output[string_value] = {
+                "confidence": confidence_value,
+                "entropy": self.shannon_entropy(string_value),
+                "hash": self.compute_hash(string_value)
             }
-         
-        with open('results.json', 'w') as f:
-            json.dump(output, f, indent=2)
 
+        out_path = results_json_path()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
         return response
 
     '''
@@ -390,3 +312,4 @@ class STRING_PRIORITIZE:
         s = s.replace("\\n","").replace("\\t","").replace("\\r","")
         return re.sub(r"\s+","",s)
 
+        return output

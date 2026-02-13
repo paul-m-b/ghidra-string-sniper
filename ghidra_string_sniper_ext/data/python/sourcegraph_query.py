@@ -1,9 +1,8 @@
-import requests
-import hashlib
 import json
-import time
-import sys
 import os
+import time
+import requests
+from gss_paths import results_json_path, sourcegraph_dir
 
 class SOURCEGRAPH_QUERY:
     def __init__(self):
@@ -15,7 +14,34 @@ class SOURCEGRAPH_QUERY:
     containing the returned file contents from sourcegraph with a small header containing the line number of the matches.
     Also calls get_readme if 4th argument is true.
     """
-    def get_repos(self, query: str, match_count: str, query_hash: str) -> set():
+
+    def stringify_for_c_source(self, s: str) -> str:
+        if s is None:
+            return ""
+        s = s.rstrip()
+        s = s.replace("\r", r"\r").replace("\n", r"\n").replace("\t", r"\t")
+        return s
+
+    def to_sourcegraph_content_filter(self, raw: str) -> str:
+        cooked = self.stringify_for_c_source(raw)
+        return f"content:{json.dumps(cooked)}"
+
+    def build_sg_query(self, raw: str, match_count: int) -> str:
+        content = self.to_sourcegraph_content_filter(raw)
+
+        cooked = self.stringify_for_c_source(raw)
+        if r"\n" in cooked and r"\r" not in cooked:
+            cooked_crlf = cooked.replace(r"\n", r"\r\n")
+            content_crlf = f"content:{json.dumps(cooked_crlf)}"
+            content = f"({content} OR {content_crlf})"
+
+        return (
+            f"type:file patterntype:keyword count:{match_count} "
+            f"(lang:c OR lang:c++) "
+            f"{content}"
+        )
+
+    def get_repos(self, query: str, query_hash: str) -> set():
         """
         with open(input_file_name, 'r') as file:
             search_terms = []
@@ -53,14 +79,20 @@ class SOURCEGRAPH_QUERY:
                             ... on FileMatch {
                                 repository {
                                     name
+                                    url
                                 }
                                 file {
                                     name
+                                    path
+                                    url
                                     content
                                 }
                                 lineMatches {
                                     lineNumber
+                                    preview
+                                    offsetAndLengths
                                 }
+                                limitHit
                             }
                         }
                     }
@@ -68,11 +100,11 @@ class SOURCEGRAPH_QUERY:
             }
             ''',
             "variables": {
-                "query": query_filtered
+                "query": query
             }
         }
 
-        print(f"\nSearching for {query[:100]}")
+        print(f"\nSearching for {query[:120]}")
         
         try:
             response: requests.Response = requests.post(url, json=payload, timeout=30)
@@ -96,7 +128,8 @@ class SOURCEGRAPH_QUERY:
                     matched_lines = set(line_match['lineNumber'] for line_match in match['lineMatches'])
 
                     matched_file: str = match['file']['name'].split('.')[0]
-                    repo_name: str = match['repository']['name'].split('/')[-1]
+                    repo_full: str = match['repository']['name']
+                    repo_name: str = repo_full.split('/')[-1]
                     file_name: str = repo_name + '_' + matched_file + '.txt'
                     '''
                     folder_name: str = query.encode("utf-8")
@@ -110,12 +143,23 @@ class SOURCEGRAPH_QUERY:
                     for num in matched_lines:
                         match_msg += str(num+6) + " "
 
-                    os.makedirs(f"GSS_results/{folder_name}/", exist_ok=True)
+                    repo_url = match['repository'].get('url') if match.get('repository') else None
+                    file_url = match['file'].get('url') if match.get('file') else None
+                    file_path = match['file'].get('path') if match.get('file') else None
+                    line_numbers = sorted(line_match['lineNumber'] + 1 for line_match in match['lineMatches'])
 
-                    with open(f"GSS_results/{folder_name}/"+file_name, 'w') as file:
+                    base_dir = sourcegraph_dir() / folder_name
+                    base_dir.mkdir(parents=True, exist_ok=True)
+
+                    with open(base_dir / file_name, 'w', encoding='utf-8', errors='replace') as file:
                         file.write("-----------GSS-----------\n" + 
-                                  "query: " + query + "\n" + 
-                                  match_msg + "\n-------------------------\n\n" + 
+                                  "query: " + query + "\n" +
+                                  "repo: " + repo_full + "\n" +
+                                  "repo_url: " + (repo_url or "") + "\n" +
+                                  "file_path: " + (file_path or "") + "\n" +
+                                  "file_url: " + (file_url or "") + "\n" +
+                                  "line_matches: " + (" ".join(str(n) for n in line_numbers)) + "\n" +
+                                  match_msg + "\n-------------------------\n\n" +
                                   match['file']['content'])
             
             print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")
@@ -127,11 +171,12 @@ class SOURCEGRAPH_QUERY:
 
 
     def iterate_search_strings(self):
-        with open("./results.json") as file:
+        with open(results_json_path(), encoding='utf-8', errors='replace') as file:
             useful_strings = json.load(file)
 
         for string in useful_strings.keys():
-            self.get_repos(string, 5, useful_strings[string]["hash"])
+            sg_query = self.build_sg_query(string, match_count=5)
+            self.get_repos(sg_query, useful_strings[string]["hash"])
 
 
 """
@@ -143,7 +188,7 @@ def get_readme(repo_url: str):
     repo_user: str = repo_url.split('/')[-2]
     repo_name: str = repo_url.split('/')[-1]
 
-    query: str = f"repo:^github\.com/{repo_user}/{repo_name}$ file:^README(\.md|\.txt)?$"
+    query: str = rf"repo:^github\.com/{repo_user}/{repo_name}$ file:^README(\.md|\.txt)?$"
     
     graphql_query: str = """
     query SearchReadme($query: String!) {
@@ -176,12 +221,11 @@ def get_readme(repo_url: str):
         results = data['data']['search']['results']
 
         for result in results['results']:
-            with open("GSS_results/"+repo_name + " _README.txt", 'w') as file:
+            out_dir = sourcegraph_dir()
+            with open(out_dir / f"{repo_name}_README.txt", 'w', encoding='utf-8', errors='replace') as file:
                 file.write(result['file']['content'])
                 print (f'Found readme for {repo_url}')
 
     except Exception as e:
         print(f"Error: {e}")
         return
-
-
