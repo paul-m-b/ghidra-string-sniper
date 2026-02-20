@@ -10,7 +10,6 @@ from ghidra.program.model.symbol import SourceType
 import traceback
 
 def find_function_by_name(program, function_name):
-    """Helper function to find a function by name."""
     function_manager = program.getFunctionManager()
     functions = function_manager.getFunctions(True)
     
@@ -20,10 +19,6 @@ def find_function_by_name(program, function_name):
     return None
 
 def rename_variable(function_name, old_var_name, new_var_name):
-    """
-    Simpler implementation using Ghidra's built-in functionality.
-    This may not work for all cases but is easier to understand.
-    """
     program = getCurrentProgram()
     if program is None:
         return "No program loaded"
