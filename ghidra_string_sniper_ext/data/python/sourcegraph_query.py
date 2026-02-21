@@ -4,10 +4,15 @@ import json
 import time
 import sys
 import os
+from collections import defaultdict
+
 
 class SOURCEGRAPH_QUERY:
     def __init__(self):
-        pass
+        self.repo_stats = defaultdict(lambda: {
+            "match_count": 0,
+            "matched_files": []   # list of {file, lines, query_hash}
+        })
 
 
     """
@@ -34,8 +39,21 @@ class SOURCEGRAPH_QUERY:
                     query = " ".join(search_terms)
         """
 
+        query_filtered = (
+            f'type:file lang:c++ lang:c count:{match_count} '
+            f'content:{json.dumps(query)}'
+        )
 
-        query_filtered = f'type:file lang:c++ lang:c count:{match_count} {query}'
+        #determines a repository we think is being used in the binary
+        #if there are more than X matches with confidence >= Y we are "interested" in it
+        #download any repositories we are "interested" in.
+        #think of and find a good way to store this repository
+
+        #Implementation:
+        #Find a way to create a list of unique repos and a counter value for each time it's been referenced like in line 131
+        #Let's say any repo with >=4 matches with confidence 8.0 are labeled as interesting
+        #Download the repositories into the current pathway, creating a subfolder called "Interesting repos" and subfolders for each repo labeled as interesting
+        #Is there a way to store this repository inside the folder? Won't it get too big with some repos?
 
         url: str = "https://sourcegraph.com/.api/graphql"
         
@@ -87,14 +105,16 @@ class SOURCEGRAPH_QUERY:
             for match in results['results']:
                 if match['__typename'] == 'FileMatch' and match['repository']:
                     print (f"{match['repository']['name']} in file {match['file']['name']}")
-                    repos.add(match['repository']['name'])
+                    repo_full = match['repository']['name']
+                    repos.add(repo_full)
 
                     # List of line numbers with matches
-                    matched_lines = set(line_match['lineNumber'] for line_match in match['lineMatches'])
+                    matched_lines = list({line_match['lineNumber'] for line_match in match['lineMatches']})
 
+
+                    repo_name_only: str = repo_full.split('/')[-1]
                     matched_file: str = match['file']['name'].split('.')[0]
-                    repo_name: str = match['repository']['name'].split('/')[-1]
-                    file_name: str = repo_name + '_' + matched_file + '.txt'
+                    file_name: str = repo_name_only + '_' + matched_file + '.txt'
                     '''
                     folder_name: str = query.encode("utf-8")
                     md5_hash = hashlib.md5()
@@ -114,7 +134,13 @@ class SOURCEGRAPH_QUERY:
                                   "query: " + query + "\n" + 
                                   match_msg + "\n-------------------------\n\n" + 
                                   match['file']['content'])
-            
+
+                    self.repo_stats[repo_full]["match_count"] += 1
+                    self.repo_stats[repo_full]["matched_files"].append({
+                        "file": match["file"]["name"],
+                        "lines": matched_lines,
+                        "query_hash": query_hash
+                    })
             print(f"\nSourcegraph found {result_count} matches from {len(repos)} repo(s):")
             return repos
             
@@ -129,7 +155,16 @@ class SOURCEGRAPH_QUERY:
 
         for string in useful_strings.keys():
             self.get_repos(string, 5, useful_strings[string]["hash"])
+        
+        # After all queries are done, persist repo summary for repo downloading
+        self.save_repo_match_summary()
 
+    def save_repo_match_summary(self, out_path="GSS_results/repo_match_summary.json"):
+        os.makedirs("GSS_results", exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(self.repo_stats, f, indent=2)
+
+        print(f"\nSaved repo match summary to {out_path}")
 
 """
 Queries sourcegraph for the readmes of given repository url. Stores the content of the readme in GSS_results in a text file.
@@ -167,7 +202,7 @@ def get_readme(repo_url: str):
     }
 
     try:
-        response: Response = requests.post(url, json=payload, timeout=30)
+        response: requests.Response = requests.post(url, json=payload, timeout=30)
         response.raise_for_status()
         data = response.json()
         results = data['data']['search']['results']
@@ -180,5 +215,4 @@ def get_readme(repo_url: str):
     except Exception as e:
         print(f"Error: {e}")
         return
-
 

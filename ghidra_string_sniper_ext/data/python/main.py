@@ -2,6 +2,8 @@ from string_prioritize import STRING_PRIORITIZE
 from function_match import FUNCTION_MATCH
 from sourcegraph_query import SOURCEGRAPH_QUERY
 from feature_extract import FEATURE_EXTRACT
+from repo_grabber import main as grab_repo
+
 
 def main():
     BINARY_PATH = "./server"
@@ -19,6 +21,7 @@ def main():
     fe = FEATURE_EXTRACT()
     fe.iterate_results()
 
+    grab_repo()
     print("Done...")
 
 
