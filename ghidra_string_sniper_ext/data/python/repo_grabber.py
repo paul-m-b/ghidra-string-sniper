@@ -3,12 +3,14 @@ import os
 import subprocess
 from collections import defaultdict
 
-CONF_THRESHOLD = 8
+CONF_THRESHOLD = 6
+#Lowered confidence threshold.
+#Allows for more results to be tagged.
 MIN_MATCHES = 4
 
 REPO_SUMMARY_PATH = "GSS_results/repo_match_summary.json"
 CONFIDENCE_PATH = "results.json"
-INTERESTING_DIR = "GSS_results/Interesting_repos"
+INTERESTING_DIR = "Interesting_repos"
 
 
 def load_repo_summary():
@@ -61,7 +63,7 @@ def clone_repo(repo_full_name):
         print(f"[=] Already downloaded: {repo_full_name}")
         return
 
-    repo_url = f"https://github.com/{repo_full_name}.git"
+    repo_url = f"https://{repo_full_name}.git"
 
     print(f"[+] Cloning {repo_full_name}")
     subprocess.run([
