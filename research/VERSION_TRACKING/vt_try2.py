@@ -132,3 +132,73 @@ def summarize_session(session):
     println("VT summary: " + str(total_match_sets) + " match set(s), " +
             str(total_matches) + " total match(es)")
 
+def main():
+    if currentProgram is None:
+        fail("This script must be run with the destination program as currentProgram")
+
+    args = getScriptArgs()
+    if len(args) != 3:
+        fail("Usage: <source_project_path> <session_name> <session_folder>")
+
+    source_project_path = args[0]
+    session_name = args[1]
+    session_folder_path = args[2]
+
+    dest_program = currentProgram
+    if not dest_program.canSave():
+        fail("Destination program is read-only: " + dest_program.getName())
+
+    source_program = None
+    session = None
+
+    try:
+        source_program = open_program_from_project(source_project_path)
+        folder = ensure_session_folder(session_folder_path)
+
+        if has_existing_session(folder, session_name):
+            fail("VT session already exists: " + session_folder_path + "/" + session_name)
+
+        # Follow Ghidra's example pattern: close out the script transaction before VT work.
+        end(True)
+
+        session = VTSessionDB(session_name, source_program, dest_program, self)
+        folder.createFile(session_name, session, monitor)
+
+        tx = session.startTransaction("Headless VT exact correlators")
+        committed = False
+
+        try:
+            factories = [
+                ExactDataMatchProgramCorrelatorFactory(),
+                ExactMatchBytesProgramCorrelatorFactory(),
+                ExactMatchInstructionsProgramCorrelatorFactory()
+            ]
+
+            for factory in factories:
+                println("Running correlator: " + factory.getName())
+                result_set = run_correlator(session, source_program, dest_program, factory)
+                println("  -> " + str(result_set.getMatchCount()) + " matches")
+
+            session.endTransaction(tx, True)
+            committed = True
+        finally:
+            if not committed:
+                try:
+                    session.endTransaction(tx, False)
+                except:
+                    pass
+
+        dest_program.save("Updated by headless VT script", monitor)
+        session.save("Saved headless VT session", monitor)
+
+        summarize_session(session)
+        println("Created VT session '" + session_name + "' in '" + session_folder_path + "'")
+
+    finally:
+        if source_program is not None:
+            source_program.release(self)
+        if session is not None:
+            session.release(self)
+
+
+main()
