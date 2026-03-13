@@ -54,3 +54,55 @@ class FEATURE_APPLIER:
             var_name = parts[-1]
             return var_name, var_type
         return None, None
+    
+    def parse_function_signature(self, signature: str):
+        """
+        Parse a function signature into components
+        Example: "undefined4 FUN_1234()" -> ("FUN_1234", "undefined4", [])
+                "char* get_string(int param_1)" -> ("get_string", "char*", ["int param_1"])
+        """
+        # Remove semicolon
+        signature = signature.rstrip(';').strip()
+        
+        # Extract function name and parameters
+        name_match = re.match(r'(.*?)\s+(\w+)\s*\((.*)\)', signature)
+        if name_match:
+            return_type = name_match.group(1).strip()
+            func_name = name_match.group(2).strip()
+            params_str = name_match.group(3).strip()
+            
+            # Parse parameters if any
+            params = []
+            if params_str:
+                # Split parameters by comma
+                param_parts = []
+                current = ""
+                in_star = False
+                for char in params_str:
+                    if char == ',' and not in_star:
+                        param_parts.append(current.strip())
+                        current = ""
+                    else:
+                        current += char
+                        if char == '*':
+                            in_star = True
+                        elif char.isspace() and in_star:
+                            in_star = False
+                if current:
+                    param_parts.append(current.strip())
+                
+                params = param_parts
+            
+            return {
+                'name': func_name,
+                'return_type': return_type,
+                'parameters': params
+            }
+        return None
+
+    def find_function(self, func_name: str):
+        """Find a function by name in the current program"""
+        for function in self.listing.getFunctions(True):
+            if function.getName() == func_name:
+                return function
+        return None
