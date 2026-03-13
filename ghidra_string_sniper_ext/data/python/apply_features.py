@@ -173,3 +173,65 @@ class FEATURE_APPLIER:
             return False
         
         return False
+    
+    def get_data_type(self, type_str: str):
+        """Convert type string to Ghidra data type"""
+        dtm = self.current_program.getDataTypeManager()
+        
+        # Handle common types
+        type_mappings = {
+            'int': 'int',
+            'char': 'char',
+            'char*': 'char *',
+            'void': 'void',
+            'undefined': 'undefined',
+            'undefined1': 'undefined1',
+            'undefined2': 'undefined2',
+            'undefined4': 'undefined4',
+            'undefined8': 'undefined8',
+            'bool': 'bool',
+            'size_t': 'size_t',
+            'uint32_t': 'uint32_t',
+            'uint64_t': 'uint64_t'
+        }
+        
+        gh_type = type_mappings.get(type_str, type_str)
+        return dtm.findDataType(f"/{gh_type}")
+    
+    def get_function_address(self, func_name: str):
+        """Get function address by its name"""
+
+        functionManager = self.current_program.getFunctionManager()
+        symbolTable = self.current_program.getSymbolTable()
+
+        symbols = list(symbolTable.getSymbols(func_name))
+
+        if not symbols:
+            print (f"Function {func_name} not found")
+        else:
+            for symbol in symbols:
+                if symbol.getSymbolType() == SymbolType.FUNCTION:
+                    func_addr = symbol.getAddress()
+                    break
+
+        return func_addr
+    
+
+
+def main():
+    """
+    Usage: 
+    1. Set the function name and features file path
+    2. Run the script
+    """
+
+    # testing woo
+    TARGET_FUNCTION = "main"
+    FEATURES_FILE = "C:/Users/Jack/ghidra_scripts/test_changes.txt"
+
+    applier = FEATURE_APPLIER()
+    applier.apply_changes(TARGET_FUNCTION, FEATURES_FILE)
+    print("\nFeature application completed")
+
+if __name__ == "__main__":
+    main()
