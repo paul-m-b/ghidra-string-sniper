@@ -75,3 +75,60 @@ def open_program_from_project(project_path):
     return df.getDomainObject(self, auto_upgrade_if_needed, False, monitor)
 
 
+def ensure_session_folder(project_folder_path):
+    project = state.getProject()
+    if project is None:
+        fail("No active Ghidra project")
+
+    project_data = project.getProjectData()
+    folder = project_data.getRootFolder()
+
+    if project_folder_path == "" or project_folder_path == "/":
+        return folder
+
+    parts = project_folder_path.split("/")
+    for part in parts:
+        if not part:
+            continue
+        next_folder = folder.getFolder(part)
+        if next_folder is None:
+            next_folder = folder.createFolder(part)
+        folder = next_folder
+
+    return folder
+
+
+def has_existing_session(folder, session_name):
+    df = folder.getFile(session_name)
+    if df is None:
+        return False
+    return df.getContentType() == VTSessionContentHandler.CONTENT_TYPE
+
+
+def run_correlator(session, source_program, dest_program, factory):
+    source_set = source_program.getMemory().getLoadedAndInitializedAddressSet()
+    dest_set = dest_program.getMemory().getLoadedAndInitializedAddressSet()
+    options = factory.createDefaultOptions()
+    correlator = factory.createCorrelator(
+        source_program,
+        source_set,
+        dest_program,
+        dest_set,
+        options
+    )
+    return correlator.correlate(session, monitor)
+
+
+def summarize_session(session):
+    total_match_sets = 0
+    total_matches = 0
+
+    for match_set in session.getMatchSets():
+        total_match_sets += 1
+        count = match_set.getMatchCount()
+        total_matches += count
+        println("  - " + str(match_set) + ": " + str(count) + " matches")
+
+    println("VT summary: " + str(total_match_sets) + " match set(s), " +
+            str(total_matches) + " total match(es)")
+
