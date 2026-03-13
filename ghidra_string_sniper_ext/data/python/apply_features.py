@@ -54,7 +54,7 @@ class FEATURE_APPLIER:
             var_name = parts[-1]
             return var_name, var_type
         return None, None
-    
+
     def parse_function_signature(self, signature: str):
         """
         Parse a function signature into components
@@ -106,7 +106,7 @@ class FEATURE_APPLIER:
             if function.getName() == func_name:
                 return function
         return None
-    
+
     def find_variable_in_function(self, function: Function, var_name: str):
         """Find a variable in a function by name"""
         # Check local variables
@@ -173,7 +173,7 @@ class FEATURE_APPLIER:
             return False
         
         return False
-    
+
     def get_data_type(self, type_str: str):
         """Convert type string to Ghidra data type"""
         dtm = self.current_program.getDataTypeManager()
@@ -215,7 +215,8 @@ class FEATURE_APPLIER:
                     break
 
         return func_addr
-    
+
+
     def apply_function_signature(self, old_sig: str, new_sig: str):
         """Apply full function signature change"""
 
@@ -238,27 +239,19 @@ class FEATURE_APPLIER:
             self.apply_rename(old_info['name'], old_info['name'], new_info['name'])
             # Refresh function reference with new name
             function = self.find_function(new_info['name'])
-        
-        # Update return type
-        ret_type = self.get_data_type(new_info['return_type'])
-        if ret_type:
-            function.setReturnType(ret_type, SourceType.USER_DEFINED)
-            print(f"Updated return type to {new_info['return_type']}")
-        
-        # Update parameters
-        # Requires redefining the function signature
-        new_signature = parser.parse(None, new_sig) 
 
+        # Updating a function signature requires redefining it
+        new_signature = parser.parse(None, new_sig) 
         if new_signature is None:
             print("Failed to parse the function signature string.")
 
-        # Apply new sig
+        # Apply new sig, requires getting the func address
         func_addr = self.get_function_address(new_info['name'])
         cmd = ApplyFunctionSignatureCmd(func_addr, new_signature, SourceType.USER_DEFINED)
         runCommand(cmd)
 
         return True
-    
+
     def apply_changes(self, func_name: str, features_file: str):
         """
         Apply all feature changes from an EXTRACTIONS.txt file
