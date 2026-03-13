@@ -58,3 +58,59 @@ public class VersionTrackerPlugin extends ProgramPlugin {
         tool.addAction(trackAction);
     }
 
+    private void runVersionTracker() throws CancelledException {
+        AskDialog<DomainFile> sourceDialog = new AskDialog<>("Source Program", "Select the source program:");
+        DomainFile sourceFile = sourceDialog.getChoice(tool.getProject().getProjectData().getRootFolder().getFiles());
+        if (sourceFile == null) {
+            return;
+        }
+
+        AskDialog<DomainFile> destinationDialog = new AskDialog<>("Destination Program", "Select the destination program:");
+        DomainFile destinationFile = destinationDialog.getChoice(tool.getProject().getProjectData().getRootFolder().getFiles());
+        if (destinationFile == null) {
+            return;
+        }
+
+        Program sourceProgram = null;
+        Program destinationProgram = null;
+        try {
+            sourceProgram = (Program) sourceFile.getDomainObject(this, false, false, null);
+            destinationProgram = (Program) destinationFile.getDomainObject(this, false, false, null);
+
+            VTSession session = VTSession.create(tool, sourceProgram, destinationProgram);
+            List<VTProgramCorrelator> correlators = VTAbstractProgramCorrelatorFactory.getAllAvailableCorrelators(session);
+            
+            MultipleOptionsDialog<VTProgramCorrelator> correlatorDialog = new MultipleOptionsDialog<>(
+                "Correlator Selection",
+                "Select the correlators to use:",
+                correlators,
+                true);
+            correlatorDialog.show();
+            if (correlatorDialog.isCanceled()) {
+                return;
+            }
+            List<VTProgramCorrelator> selectedCorrelators = correlatorDialog.getUserChoices();
+
+
+            VTOptions options = new VTOptions("Default");
+            for (VTProgramCorrelator correlator : correlators) {
+                if (selectedCorrelators.contains(correlator)) {
+                    options.setCorrelator(correlator, true);
+                } else {
+                    options.setCorrelator(correlator, false);
+                }
+            }
+            VTAutoVersionTrackingTask task = new VTAutoVersionTrackingTask(session, options, new VersionTrackingApplyOptions());
+            new TaskLauncher(task, null);
+
+        }
+        finally {
+            if (sourceProgram != null) {
+                sourceProgram.release(this);
+            }
+            if (destinationProgram != null) {
+                destinationProgram.release(this);
+            }
+        }
+    }
+}
