@@ -216,6 +216,49 @@ class FEATURE_APPLIER:
 
         return func_addr
     
+    def apply_function_signature(self, old_sig: str, new_sig: str):
+        """Apply full function signature change"""
+
+        dtm = self.current_program.getDataTypeManager()
+        parser = FunctionSignatureParser(dtm, None)
+        old_info = self.parse_function_signature(old_sig)
+        new_info = self.parse_function_signature(new_sig)
+        
+        if not old_info or not new_info:
+            print(f"Failed to parse signatures: {old_sig} -> {new_sig}")
+            return False
+        
+        function = self.find_function(old_info['name'])
+        if not function:
+            print(f"Function {old_info['name']} not found")
+            return False
+        
+        # Rename function if needed
+        if old_info['name'] != new_info['name']:
+            self.apply_rename(old_info['name'], old_info['name'], new_info['name'])
+            # Refresh function reference with new name
+            function = self.find_function(new_info['name'])
+        
+        # Update return type
+        ret_type = self.get_data_type(new_info['return_type'])
+        if ret_type:
+            function.setReturnType(ret_type, SourceType.USER_DEFINED)
+            print(f"Updated return type to {new_info['return_type']}")
+        
+        # Update parameters
+        # Requires redefining the function signature
+        new_signature = parser.parse(None, new_sig) 
+
+        if new_signature is None:
+            print("Failed to parse the function signature string.")
+
+        # Apply new sig
+        func_addr = self.get_function_address(new_info['name'])
+        cmd = ApplyFunctionSignatureCmd(func_addr, new_signature, SourceType.USER_DEFINED)
+        runCommand(cmd)
+
+        return True
+    
 
 
 def main():
