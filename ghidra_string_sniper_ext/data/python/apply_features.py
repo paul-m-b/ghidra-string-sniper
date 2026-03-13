@@ -106,3 +106,70 @@ class FEATURE_APPLIER:
             if function.getName() == func_name:
                 return function
         return None
+    
+    def find_variable_in_function(self, function: Function, var_name: str):
+        """Find a variable in a function by name"""
+        # Check local variables
+        for var in function.getAllVariables():
+            if var.getName() == var_name:
+                return var
+        
+        # Check parameters
+        for param in function.getParameters():
+            if param.getName() == var_name:
+                return param
+        
+        return None
+
+    def apply_rename(self, func_name: str, old_name: str, new_name: str):
+        """Apply variable/function rename operation"""
+        function = self.find_function(func_name)
+        if not function:
+            print(f"Function {func_name} not found")
+            return False
+        
+        # Check if it's a function rename
+        if old_name == func_name:
+            function.setName(new_name, SourceType.USER_DEFINED)
+            print(f"Renamed function {old_name} -> {new_name}")
+            return True
+        
+        # Otherwise it's a variable rename
+        var = self.find_variable_in_function(function, old_name)
+        if var:
+            var.setName(new_name, SourceType.USER_DEFINED)
+            print(f"Renamed {old_name} -> {new_name} in function {func_name}")
+            return True
+        else:
+            print(f"Variable {old_name} not found in function {func_name}")
+            return False
+
+    def apply_retype(self, func_name: str, var_name: str, new_type: str):
+        """Apply variable/parameter retype operation"""
+
+        dtm = self.current_program.getDataTypeManager()
+        function = self.find_function(func_name)
+        if not function:
+            print(f"Function {func_name} not found")
+            return False
+        
+        # Check if it's a return type
+        if var_name == "return":
+            # This is a function return type change
+            function.setReturnType(dtm.getDataType("/"+new_type), SourceType.USER_DEFINED)
+            print(f"Return type change to {new_type} for {func_name} - not sure how to do that yet lmao")
+            return False
+        
+        var = self.find_variable_in_function(function, var_name)
+        if var:
+            # Get the data type from the new type string
+            data_type = self.get_data_type(new_type)
+            if data_type:
+                var.setDataType(data_type, SourceType.USER_DEFINED)
+                print(f"Retyped {var_name} -> {new_type} in function {func_name}")
+                return True
+        else:
+            print(f"Variable {var_name} not found in function {func_name}")
+            return False
+        
+        return False
