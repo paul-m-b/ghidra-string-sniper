@@ -259,7 +259,63 @@ class FEATURE_APPLIER:
 
         return True
     
-
+    def apply_changes(self, func_name: str, features_file: str):
+        """
+        Apply all feature changes from an EXTRACTIONS.txt file
+        """
+        print(f"\nApplying features for function: {func_name}")
+        print("-" * 50)
+        
+        try:
+            with open(features_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception as e:
+            print(f"Error reading features file: {e}")
+            return
+        
+        for line in lines:
+            line = line.strip()
+            if not line or '-->' not in line:
+                continue
+            
+            parsed = self.parse_feature_line(line)
+            if not parsed:
+                continue
+            
+            original = parsed['original']
+            proposed = parsed['proposed']
+            change_types = parsed['change_types']
+            
+            print(f"\nProcessing: {line}")
+            
+            # Determine what kind of change this is
+            if 'function signature' in change_types:
+                # Full function signature change
+                self.apply_function_signature(original, proposed)
+            
+            elif 'rename' in change_types and 'retype' in change_types:
+                # Both rename and retype on a variable
+                old_name, old_type = self.extract_var_info(original)
+                new_name, new_type = self.extract_var_info(proposed)
+                
+                if old_name and new_name:
+                    self.apply_rename(func_name, old_name, new_name)
+                if old_type and new_type:
+                    self.apply_retype(func_name, new_name if new_name else old_name, new_type)
+            
+            elif 'rename' in change_types:
+                # Just rename
+                old_name, _ = self.extract_var_info(original)
+                new_name, _ = self.extract_var_info(proposed)
+                if old_name and new_name:
+                    self.apply_rename(func_name, old_name, new_name)
+            
+            elif 'retype' in change_types:
+                # Just retype
+                var_name, _ = self.extract_var_info(original)
+                _, new_type = self.extract_var_info(proposed)
+                if var_name and new_type:
+                    self.apply_retype(func_name, var_name, new_type)
 
 def main():
     """
