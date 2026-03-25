@@ -40,6 +40,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         buildPanel();
 
         setTitle("String Sniper");
+        setWindowMenuGroup(owner);
         java.net.URL iconURL = getClass().getResource("/images/templogo.png");
         if (iconURL != null) {
             setIcon(new ImageIcon(iconURL));
@@ -50,6 +51,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         addLocalAction(new SearchForStringsAction(this, owner));
         addLocalAction(new SortStringsAction(this, owner));
         addLocalAction(new HelpAction(this, owner));
+        addLocalAction(new VersionTrackingAction(this, owner, pluginTool));
     }
 
     public void clearStrings() {
