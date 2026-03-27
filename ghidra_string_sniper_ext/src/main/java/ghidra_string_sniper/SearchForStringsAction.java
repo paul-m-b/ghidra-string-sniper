@@ -1,8 +1,12 @@
 package ghidra_string_sniper;
 
+import java.awt.Component;
+import java.awt.Desktop;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,7 +27,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import javax.swing.JOptionPane;
+import javax.swing.BoxLayout;
+import javax.swing.JEditorPane;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import javax.swing.event.HyperlinkEvent;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -53,6 +62,8 @@ import ghidra.util.task.TaskMonitor;
 import resources.Icons;
 
 public class SearchForStringsAction extends DockingAction {
+    private static final float OPEN_SOURCE_ALERT_SCORE_THRESHOLD = 7.4f;
+    private static final int OPEN_SOURCE_ALERT_MIN_STRINGS = 4;
 
     public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
         super("Search For Strings", owner);
@@ -226,6 +237,7 @@ public class SearchForStringsAction extends DockingAction {
                             JsonParser.parseString(Files.readString(matchesFile.toPath())).getAsJsonObject();
 
                     List<StringData> newData = new ArrayList<>();
+                    Map<String, RepoAggregate> repoAggregates = new HashMap<>();
                     for (String extractedValue : resultsRoot.keySet()) {
                         JsonObject rObj = resultsRoot.getAsJsonObject(extractedValue);
 
@@ -254,7 +266,24 @@ public class SearchForStringsAction extends DockingAction {
                         );
                         sd.matchPath = matchPath;
                         newData.add(sd);
+
+                        if (matchScore != null && matchScore > OPEN_SOURCE_ALERT_SCORE_THRESHOLD &&
+                                matchPath != null && !matchPath.isBlank()) {
+                            RepoMatchMeta repoMatchMeta = readRepoMatchMeta(matchPath);
+                            if (repoMatchMeta != null) {
+                                RepoAggregate agg = repoAggregates.computeIfAbsent(
+                                        repoMatchMeta.repoKey,
+                                        key -> new RepoAggregate(repoMatchMeta.repoDisplayName, repoMatchMeta.repoUrl)
+                                );
+                                agg.addScore(matchScore);
+                                if ((agg.repoUrl == null || agg.repoUrl.isBlank()) &&
+                                        repoMatchMeta.repoUrl != null && !repoMatchMeta.repoUrl.isBlank()) {
+                                    agg.repoUrl = repoMatchMeta.repoUrl;
+                                }
+                            }
+                        }
                     }
+                    OpenSourceAlertCandidate alertCandidate = pickOpenSourceAlertCandidate(repoAggregates);
                     monitor.setProgress(100);
 
                     SwingUtilities.invokeLater(() -> {
@@ -265,6 +294,7 @@ public class SearchForStringsAction extends DockingAction {
                             sscpFinal.addString(sd);
                         }
                         sscpFinal.applyDefaultSort();
+                        showOpenSourceAlert(sscpFinal.getComponent(), alertCandidate);
                     });
                     logLine(logWriterRef.get(), consoleService, "Pipeline completed.");
                 } catch (Exception e) {
@@ -446,6 +476,187 @@ public class SearchForStringsAction extends DockingAction {
             }
         }
         return null;
+    }
+
+    private static RepoMatchMeta readRepoMatchMeta(String matchPath) {
+        Path matchFile;
+        try {
+            matchFile = Path.of(matchPath);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (!Files.exists(matchFile)) {
+            return null;
+        }
+
+        String repo = null;
+        String repoUrl = null;
+        try (BufferedReader reader = Files.newBufferedReader(matchFile, StandardCharsets.UTF_8)) {
+            String line;
+            int linesRead = 0;
+            while ((line = reader.readLine()) != null && linesRead < 50) {
+                linesRead++;
+                if (line.startsWith("repo: ")) {
+                    repo = line.substring("repo: ".length()).trim();
+                } else if (line.startsWith("repo_url: ")) {
+                    repoUrl = line.substring("repo_url: ".length()).trim();
+                }
+                if (repo != null && !repo.isBlank() && repoUrl != null && !repoUrl.isBlank()) {
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            return null;
+        }
+
+        String repoKey = null;
+        if (repo != null && !repo.isBlank()) {
+            repoKey = repo;
+        } else if (repoUrl != null && !repoUrl.isBlank()) {
+            repoKey = normalizeSourcegraphUrl(repoUrl);
+        }
+        if (repoKey == null || repoKey.isBlank()) {
+            return null;
+        }
+
+        String normalizedUrl = normalizeSourcegraphUrl(repoUrl);
+        if ((normalizedUrl == null || normalizedUrl.isBlank()) && repo != null && !repo.isBlank()) {
+            normalizedUrl = "https://sourcegraph.com/" + repo;
+        }
+        String repoDisplayName = (repo != null && !repo.isBlank()) ? repo : repoKey;
+        return new RepoMatchMeta(repoKey, repoDisplayName, normalizedUrl);
+    }
+
+    private static OpenSourceAlertCandidate pickOpenSourceAlertCandidate(Map<String, RepoAggregate> repoAggregates) {
+        OpenSourceAlertCandidate best = null;
+        for (RepoAggregate aggregate : repoAggregates.values()) {
+            if (aggregate.count < OPEN_SOURCE_ALERT_MIN_STRINGS) {
+                continue;
+            }
+            float avgScore = aggregate.scoreSum / aggregate.count;
+            if (best == null ||
+                    aggregate.count > best.count ||
+                    (aggregate.count == best.count && avgScore > best.averageScore)) {
+                best = new OpenSourceAlertCandidate(
+                        aggregate.repoDisplayName,
+                        aggregate.repoUrl,
+                        aggregate.count,
+                        avgScore
+                );
+            }
+        }
+        return best;
+    }
+
+    private static void showOpenSourceAlert(Component parent, OpenSourceAlertCandidate candidate) {
+        if (candidate == null) {
+            return;
+        }
+        String link = (candidate.repoUrl != null && !candidate.repoUrl.isBlank())
+                ? candidate.repoUrl
+                : candidate.repoDisplayName;
+        String safeLink = escapeHtml(link);
+
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.add(new JLabel("Likely open-source file detected."));
+        panel.add(new JLabel(candidate.count + " strings scored above " +
+                OPEN_SOURCE_ALERT_SCORE_THRESHOLD + " from the same repository."));
+        panel.add(new JLabel("Repository: " + candidate.repoDisplayName));
+
+        JEditorPane linkPane = new JEditorPane(
+                "text/html",
+                "<html>Repo link: <a href=\"" + safeLink + "\">" + safeLink + "</a></html>"
+        );
+        linkPane.setEditable(false);
+        linkPane.setOpaque(false);
+        linkPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+        linkPane.addHyperlinkListener(e -> {
+            if (e.getEventType() != HyperlinkEvent.EventType.ACTIVATED) {
+                return;
+            }
+            try {
+                if (Desktop.isDesktopSupported()) {
+                    Desktop.getDesktop().browse(new URI(e.getURL().toString()));
+                }
+            } catch (Exception ex) {
+                Msg.showError(SearchForStringsAction.class, parent,
+                        "Failed to open URL", ex.getMessage(), ex);
+            }
+        });
+        panel.add(linkPane);
+
+        JOptionPane.showMessageDialog(parent, panel, "Likely Open-Source Match", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private static String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
+
+    private static String normalizeSourcegraphUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String trimmed = url.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        if (trimmed.startsWith("/")) {
+            return "https://sourcegraph.com" + trimmed;
+        }
+        return trimmed;
+    }
+
+    private static final class RepoMatchMeta {
+        final String repoKey;
+        final String repoDisplayName;
+        final String repoUrl;
+
+        RepoMatchMeta(String repoKey, String repoDisplayName, String repoUrl) {
+            this.repoKey = repoKey;
+            this.repoDisplayName = repoDisplayName;
+            this.repoUrl = repoUrl;
+        }
+    }
+
+    private static final class RepoAggregate {
+        final String repoDisplayName;
+        String repoUrl;
+        int count;
+        float scoreSum;
+
+        RepoAggregate(String repoDisplayName, String repoUrl) {
+            this.repoDisplayName = repoDisplayName;
+            this.repoUrl = repoUrl;
+            this.count = 0;
+            this.scoreSum = 0.0f;
+        }
+
+        void addScore(float score) {
+            count++;
+            scoreSum += score;
+        }
+    }
+
+    private static final class OpenSourceAlertCandidate {
+        final String repoDisplayName;
+        final String repoUrl;
+        final int count;
+        final float averageScore;
+
+        OpenSourceAlertCandidate(String repoDisplayName, String repoUrl, int count, float averageScore) {
+            this.repoDisplayName = repoDisplayName;
+            this.repoUrl = repoUrl;
+            this.count = count;
+            this.averageScore = averageScore;
+        }
     }
 
     private static void deleteDirectory(Path path) throws IOException {
