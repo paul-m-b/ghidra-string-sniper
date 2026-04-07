@@ -47,6 +47,7 @@ import ghidra.program.model.listing.Program;
 import ghidra.framework.model.DomainFile;
 import ghidra.util.exception.VersionException;
 import ghidra.feature.vt.api.main.VTAssociationStatus;
+import ghidra.feature.vt.api.util.VTAssociationStatusException;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -290,16 +291,31 @@ public class VersionTrackingAction extends DockingAction {
 					gson.toJson(matchInfo, writer);
 				}
 
+				List<String> vtArgs = new ArrayList<>();
+				vtArgs.add("--jsonpath");
+				vtArgs.add(tempSrcDecompFile.toString()+".json");
                                 PythonRunner.RunResult analysisResult = PythonRunner.runSystemPython(
                                 	"python",
-                                	"Something.py",
-                                	0
+                                	"extension_interface/run_vt_analysis.py",
+					vtArgs,
+                                	0,
+					null
                                 );
-
                                 if (analysisResult == null || analysisResult.exitCode != 0) {
                                 	Msg.showError(this, null, "Python VT Analysis Failed", "Python script failed or timed out.");
+
                                 }
-                            } catch (IOException e) {
+
+				if (analysisResult.stdout.contains("true")) {
+					// apply the match
+					// might need to do more here than just this accept lol
+					// does this apply markups? (probably not)
+					assoc.setAccepted();
+
+				} else {
+					continue;
+				}
+                            } catch (IOException | InterruptedException | VTAssociationStatusException e) {
 
                                 Msg.showError(this, null, "File Operation Error", "Failed to create or write temporary decomp files: " + e.getMessage(), e);
 
