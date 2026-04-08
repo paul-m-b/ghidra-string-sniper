@@ -1,0 +1,4 @@
+name: ghidra-string-sniper/codeql-testing
+version: 0.0.1
+dependencies:
+  codeql/cpp-all: "*"

@@ -1,0 +1,15 @@
+{
+  "codeql_cli": "codeql",
+  "database": "./codeql-db",
+  "source_root": "/home/paul/C-Web-Server/",
+  "language": "c-cpp",
+  "build_command": "make",
+  "target": {
+    "name": "getMessage",
+    "file_substring": "",
+    "qualified_name_substring": ""
+  },
+  "output": "./OUTPUT/codeql_target_refs.json",
+  "keep_generated_queries": false,
+  "verbose": true
+}
