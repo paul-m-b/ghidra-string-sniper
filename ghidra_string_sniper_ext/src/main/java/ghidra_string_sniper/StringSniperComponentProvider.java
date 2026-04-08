@@ -52,6 +52,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
         addLocalAction(new SearchForStringsAction(this, owner));
         addLocalAction(new SortStringsAction(this, owner));
         addLocalAction(new HelpAction(this, owner));
+        addLocalAction(new ExportFunctionReferencesAction(this, owner));
         addLocalAction(new VersionTrackingAction(this, owner, pluginTool));
     }
 
