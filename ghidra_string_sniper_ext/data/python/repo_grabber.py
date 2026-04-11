@@ -30,6 +30,15 @@ def load_confidences():
 
 
 def rank_repos(repo_summary, hash_to_conf):
+    """
+    Rank_repos filter and rank repositories based on the total number of matches and amount of matches that meet the confidence threshold.
+
+    
+    A repo is considered interesting to us if:
+        match_count >= MIN_MATCHES
+        strong_hits >= MIN_MATCHES
+
+    """
     ranked = {}
 
     for repo, info in repo_summary.items():
@@ -56,6 +65,9 @@ def rank_repos(repo_summary, hash_to_conf):
 
 
 def clone_repo(repo_full_name):
+    """
+    Clones a Git repository locally into INTERESTING_DIR for further analysis.
+    """
     os.makedirs(INTERESTING_DIR, exist_ok=True)
     target_dir = os.path.join(INTERESTING_DIR, repo_full_name.replace("/", "__"))
 
@@ -72,6 +84,15 @@ def clone_repo(repo_full_name):
 
 
 def main():
+    """
+    Purpose of repo_grabber:
+
+    1. Load repository summary and confidence data
+    2. Rank/filter repositories based on criteria
+    3. Print interesting repositories
+    4. Clone them locally
+    5. Save results to JSON
+    """
     repo_summary = load_repo_summary()
     hash_to_conf = load_confidences()
 
