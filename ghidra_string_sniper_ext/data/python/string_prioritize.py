@@ -17,7 +17,7 @@ class STRING_PRIORITIZE:
         #self.MODEL = "openai/gpt-oss-20b:free"
         self.MODEL = "openai/gpt-4o-mini"
         self.LLM = LLM_INTERACT()
-        self.MAX_STRING_COUNT = 10
+        self.MAX_STRING_COUNT = 50
         self.MAX_RETRIES = 2
 
     def shannon_entropy(self, s: str):
