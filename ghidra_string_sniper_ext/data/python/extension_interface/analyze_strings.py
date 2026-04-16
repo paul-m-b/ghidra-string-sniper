@@ -9,6 +9,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 from function_match import FUNCTION_MATCH
+from repo_grabber import grab_repositories
 from sourcegraph_query import SOURCEGRAPH_QUERY
 
 
@@ -43,6 +44,7 @@ def main():
 
     f = FUNCTION_MATCH()
     f.iterate_through_results()
+    grab_repositories()
     logging.info("Analysis complete")
 
 

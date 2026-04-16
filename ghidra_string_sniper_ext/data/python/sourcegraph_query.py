@@ -65,11 +65,6 @@ class SOURCEGRAPH_QUERY:
                     query = " ".join(search_terms)
         """
 
-        query_filtered = (
-            f'type:file lang:c++ lang:c count:{match_count} '
-            f'content:{json.dumps(query)}'
-        )
-
         #determines a repository we think is being used in the binary
         #if there are more than X matches with confidence >= Y we are "interested" in it
         #download any repositories we are "interested" in.
@@ -202,13 +197,17 @@ class SOURCEGRAPH_QUERY:
         for string in useful_strings.keys():
             sg_query = self.build_sg_query(string, match_count=5)
             self.get_repos(sg_query, useful_strings[string]["hash"])
-            self.get_repos(string, 5, useful_strings[string]["hash"])
-        
+
         # After all queries are done, persist repo summary for repo downloading
         self.save_repo_match_summary()
 
-    def save_repo_match_summary(self, out_path="GSS_results/repo_match_summary.json"):
-        os.makedirs("GSS_results", exist_ok=True)
+    def save_repo_match_summary(self, out_path=None):
+        if out_path is None:
+            out_path = sourcegraph_dir() / "repo_match_summary.json"
+        else:
+            out_path = sourcegraph_dir() / out_path
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(self.repo_stats, f, indent=2)
 
