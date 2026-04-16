@@ -20,6 +20,10 @@ GSS_decomps/<hash>/decomp.txt                            |
      v                                                   v
 GSS_Results/<hash>/*  ----------------------------->  MATCHES.json
      |
+     |  (Python) repo grab for strong multi-string hits
+     v
+Interesting_repos/<repo>/
+     |
      |  (Java) load results + matches
      v
 UI (Strings + Results)
@@ -46,7 +50,7 @@ UI (Strings + Results)
 1. Java exports all defined strings + addresses to `strings_raw.json`.
 2. Python ranks strings and writes `results.json`.
 3. Java decompiles functions that reference the ranked strings, writes `GSS_decomps/...`.
-4. Python queries Sourcegraph and writes `GSS_Results/...` and `MATCHES.json`.
+4. Python queries Sourcegraph, writes `GSS_Results/...`, computes `MATCHES.json`, and clones any repository that clears the post-match thresholds into `Interesting_repos/...`.
 5. Java loads `results.json` + `MATCHES.json` and populates the UI.
 
 ## Where state lives
@@ -60,6 +64,8 @@ Each run writes to a per-binary folder under the Ghidra project directory:
   MATCHES.json
   GSS_Results/<hash>/*
   GSS_decomps/<hash>/decomp.txt
+  Interesting_repos/interesting_repos.json
+  Interesting_repos/<repo>/
   pipeline.log
 ```
 
