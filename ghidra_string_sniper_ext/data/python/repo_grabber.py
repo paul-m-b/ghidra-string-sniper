@@ -5,12 +5,11 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from gss_paths import get_output_dir, matches_json_path, results_json_path
+from gss_paths import get_output_dir, interesting_repos_dir, matches_json_path, results_json_path
 
 CONF_THRESHOLD = 6
 MATCH_THRESHOLD = 7.4
 MIN_MATCHES = 4
-INTERESTING_DIRNAME = "Interesting_repos"
 
 
 @dataclass
@@ -38,12 +37,6 @@ class RepoCandidate:
     @property
     def strong_hits(self) -> int:
         return sum(1 for confidence in self.result_confidences if confidence >= CONF_THRESHOLD)
-
-
-def interesting_repos_dir() -> Path:
-    return get_output_dir() / INTERESTING_DIRNAME
-
-
 def load_matches() -> dict:
     with open(matches_json_path(), "r", encoding="utf-8") as f:
         return json.load(f)

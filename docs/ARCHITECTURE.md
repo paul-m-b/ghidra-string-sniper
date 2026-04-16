@@ -24,6 +24,10 @@ GSS_Results/<hash>/*  ----------------------------->  MATCHES.json
      v
 Interesting_repos/<repo>/
      |
+     |  (Python) compilation agent on downloaded repos
+     v
+Compiled_binaries/<repo>/
+     |
      |  (Java) load results + matches
      v
 UI (Strings + Results)
@@ -50,7 +54,7 @@ UI (Strings + Results)
 1. Java exports all defined strings + addresses to `strings_raw.json`.
 2. Python ranks strings and writes `results.json`.
 3. Java decompiles functions that reference the ranked strings, writes `GSS_decomps/...`.
-4. Python queries Sourcegraph, writes `GSS_Results/...`, computes `MATCHES.json`, and clones any repository that clears the post-match thresholds into `Interesting_repos/...`.
+4. Python queries Sourcegraph, writes `GSS_Results/...`, computes `MATCHES.json`, clones any repository that clears the post-match thresholds into `Interesting_repos/...`, then runs the compilation agent against those local repos and records outputs under `Compiled_repos/...`, `Compiled_binaries/...`, and `compilation_results.json`.
 5. Java loads `results.json` + `MATCHES.json` and populates the UI.
 
 ## Where state lives
@@ -66,6 +70,9 @@ Each run writes to a per-binary folder under the Ghidra project directory:
   GSS_decomps/<hash>/decomp.txt
   Interesting_repos/interesting_repos.json
   Interesting_repos/<repo>/
+  Compiled_repos/<repo>/manifest.json
+  Compiled_binaries/<repo>/*
+  compilation_results.json
   pipeline.log
 ```
 

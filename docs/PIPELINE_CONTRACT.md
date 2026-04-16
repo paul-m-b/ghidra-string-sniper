@@ -17,9 +17,9 @@ If any of these inputs/outputs change, update this file and the corresponding co
    - Input: `results.json` + `Program`
    - Output: `GSS_decomps/<hash>/decomp.txt`
 
-4. **Python: Sourcegraph + function match + repo grab**
+4. **Python: Sourcegraph + function match + repo grab + compile**
    - Input: `results.json`, `GSS_decomps/<hash>/decomp.txt`
-   - Output: `GSS_Results/<hash>/*`, `MATCHES.json`, `Interesting_repos/*`
+   - Output: `GSS_Results/<hash>/*`, `MATCHES.json`, `Interesting_repos/*`, `Compiled_repos/*`, `Compiled_binaries/*`, `compilation_results.json`
 
 5. **Java: UI population**
    - Input: `results.json`, `MATCHES.json`
@@ -36,6 +36,9 @@ If any of these inputs/outputs change, update this file and the corresponding co
   GSS_decomps/<hash>/decomp.txt
   Interesting_repos/interesting_repos.json
   Interesting_repos/<repo>/
+  Compiled_repos/<repo>/manifest.json
+  Compiled_binaries/<repo>/*
+  compilation_results.json
   pipeline.log
 ```
 

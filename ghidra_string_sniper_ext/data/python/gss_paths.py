@@ -28,3 +28,19 @@ def decomps_dir() -> Path:
 
 def sourcegraph_dir() -> Path:
     return ensure_dir(get_output_dir() / "GSS_Results")
+
+
+def interesting_repos_dir() -> Path:
+    return ensure_dir(get_output_dir() / "Interesting_repos")
+
+
+def compiled_repos_dir() -> Path:
+    return ensure_dir(get_output_dir() / "Compiled_repos")
+
+
+def compiled_binaries_dir() -> Path:
+    return ensure_dir(get_output_dir() / "Compiled_binaries")
+
+
+def compilation_results_path() -> Path:
+    return get_output_dir() / "compilation_results.json"
