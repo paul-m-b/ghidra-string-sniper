@@ -1,12 +1,11 @@
 package ghidra_string_sniper;
 
 import java.awt.Component;
-import java.awt.Desktop;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +18,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,13 +28,15 @@ import java.util.stream.Stream;
 
 import javax.swing.JOptionPane;
 import javax.swing.BoxLayout;
-import javax.swing.JEditorPane;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
-import javax.swing.event.HyperlinkEvent;
+import javax.swing.JTextArea;
 
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -62,8 +64,10 @@ import ghidra.util.task.TaskMonitor;
 import resources.Icons;
 
 public class SearchForStringsAction extends DockingAction {
-    private static final float OPEN_SOURCE_ALERT_SCORE_THRESHOLD = 7.4f;
-    private static final int OPEN_SOURCE_ALERT_MIN_STRINGS = 4;
+    private static final float INTERESTING_REPO_MATCH_THRESHOLD = 7.4f;
+    private static final int INTERESTING_REPO_CONF_THRESHOLD = 6;
+    private static final int INTERESTING_REPO_MIN_MATCHES = 4;
+    private static final String INTERESTING_REPOS_DIR = "Interesting_repos";
 
     public SearchForStringsAction(StringSniperComponentProvider provider, String owner) {
         super("Search For Strings", owner);
@@ -267,23 +271,50 @@ public class SearchForStringsAction extends DockingAction {
                         sd.matchPath = matchPath;
                         newData.add(sd);
 
-                        if (matchScore != null && matchScore > OPEN_SOURCE_ALERT_SCORE_THRESHOLD &&
-                                matchPath != null && !matchPath.isBlank()) {
+                        if (matchScore != null &&
+                                matchScore >= INTERESTING_REPO_MATCH_THRESHOLD &&
+                                resultsScore >= INTERESTING_REPO_CONF_THRESHOLD &&
+                                matchPath != null &&
+                                !matchPath.isBlank()) {
                             RepoMatchMeta repoMatchMeta = readRepoMatchMeta(matchPath);
                             if (repoMatchMeta != null) {
                                 RepoAggregate agg = repoAggregates.computeIfAbsent(
                                         repoMatchMeta.repoKey,
-                                        key -> new RepoAggregate(repoMatchMeta.repoDisplayName, repoMatchMeta.repoUrl)
+                                        key -> new RepoAggregate(
+                                                repoMatchMeta.repoDisplayName,
+                                                repoMatchMeta.repoUrl,
+                                                repoMatchMeta.cloneUrl
+                                        )
                                 );
-                                agg.addScore(matchScore);
+                                agg.addHit(hash, matchScore, resultsScore);
                                 if ((agg.repoUrl == null || agg.repoUrl.isBlank()) &&
                                         repoMatchMeta.repoUrl != null && !repoMatchMeta.repoUrl.isBlank()) {
                                     agg.repoUrl = repoMatchMeta.repoUrl;
                                 }
+                                if ((agg.cloneUrl == null || agg.cloneUrl.isBlank()) &&
+                                        repoMatchMeta.cloneUrl != null && !repoMatchMeta.cloneUrl.isBlank()) {
+                                    agg.cloneUrl = repoMatchMeta.cloneUrl;
+                                }
                             }
                         }
                     }
-                    OpenSourceAlertCandidate alertCandidate = pickOpenSourceAlertCandidate(repoAggregates);
+
+                    Map<String, RepoAggregate> interestingRepos = selectInterestingRepos(repoAggregates);
+                    Map<String, CloneExecutionResult> cloneResults = cloneInterestingRepos(
+                            outputDirFinal,
+                            interestingRepos,
+                            logWriterRef.get(),
+                            consoleService
+                    );
+                    Path summaryPath = writeInterestingReposSummary(outputDirFinal, interestingRepos, cloneResults);
+                    InterestingReposAlert interestingReposAlert =
+                            buildInterestingReposAlert(interestingRepos, cloneResults, summaryPath);
+
+                    logLine(
+                            logWriterRef.get(),
+                            consoleService,
+                            "Interesting repo summary: " + summaryPath + " (" + interestingRepos.size() + " repo(s))"
+                    );
                     monitor.setProgress(100);
 
                     SwingUtilities.invokeLater(() -> {
@@ -294,7 +325,7 @@ public class SearchForStringsAction extends DockingAction {
                             sscpFinal.addString(sd);
                         }
                         sscpFinal.applyDefaultSort();
-                        showOpenSourceAlert(sscpFinal.getComponent(), alertCandidate);
+                        showInterestingReposAlert(sscpFinal.getComponent(), interestingReposAlert);
                     });
                     logLine(logWriterRef.get(), consoleService, "Pipeline completed.");
                 } catch (Exception e) {
@@ -509,95 +540,325 @@ public class SearchForStringsAction extends DockingAction {
             return null;
         }
 
-        String repoKey = null;
-        if (repo != null && !repo.isBlank()) {
-            repoKey = repo;
-        } else if (repoUrl != null && !repoUrl.isBlank()) {
-            repoKey = normalizeSourcegraphUrl(repoUrl);
-        }
-        if (repoKey == null || repoKey.isBlank()) {
+        String repoPath = extractRepoPath(repo, repoUrl);
+        if (repoPath == null || repoPath.isBlank()) {
             return null;
         }
 
         String normalizedUrl = normalizeSourcegraphUrl(repoUrl);
-        if ((normalizedUrl == null || normalizedUrl.isBlank()) && repo != null && !repo.isBlank()) {
-            normalizedUrl = "https://sourcegraph.com/" + repo;
+        if (normalizedUrl == null || normalizedUrl.isBlank()) {
+            normalizedUrl = "https://sourcegraph.com/" + repoPath;
         }
-        String repoDisplayName = (repo != null && !repo.isBlank()) ? repo : repoKey;
-        return new RepoMatchMeta(repoKey, repoDisplayName, normalizedUrl);
+        String repoKey;
+        if (repo != null && !repo.isBlank()) {
+            repoKey = stripGitSuffix(repo.trim());
+            if (repoKey.startsWith("/")) {
+                repoKey = repoKey.substring(1);
+            }
+        } else {
+            repoKey = repoPath;
+        }
+        String cloneUrl = "https://" + repoPath + ".git";
+        String repoDisplayName = repoKey;
+        return new RepoMatchMeta(repoKey, repoDisplayName, normalizedUrl, cloneUrl);
     }
 
-    private static OpenSourceAlertCandidate pickOpenSourceAlertCandidate(Map<String, RepoAggregate> repoAggregates) {
-        OpenSourceAlertCandidate best = null;
-        for (RepoAggregate aggregate : repoAggregates.values()) {
-            if (aggregate.count < OPEN_SOURCE_ALERT_MIN_STRINGS) {
+    private static Map<String, RepoAggregate> selectInterestingRepos(Map<String, RepoAggregate> repoAggregates) {
+        List<Map.Entry<String, RepoAggregate>> entries = new ArrayList<>(repoAggregates.entrySet());
+        entries.sort((a, b) -> {
+            RepoAggregate left = a.getValue();
+            RepoAggregate right = b.getValue();
+            int byCount = Integer.compare(right.count, left.count);
+            if (byCount != 0) {
+                return byCount;
+            }
+            int byScore = Double.compare(right.averageMatchScore(), left.averageMatchScore());
+            if (byScore != 0) {
+                return byScore;
+            }
+            return a.getKey().compareTo(b.getKey());
+        });
+
+        Map<String, RepoAggregate> selected = new LinkedHashMap<>();
+        for (Map.Entry<String, RepoAggregate> entry : entries) {
+            RepoAggregate aggregate = entry.getValue();
+            if (aggregate.count < INTERESTING_REPO_MIN_MATCHES) {
                 continue;
             }
-            float avgScore = aggregate.scoreSum / aggregate.count;
-            if (best == null ||
-                    aggregate.count > best.count ||
-                    (aggregate.count == best.count && avgScore > best.averageScore)) {
-                best = new OpenSourceAlertCandidate(
-                        aggregate.repoDisplayName,
-                        aggregate.repoUrl,
-                        aggregate.count,
-                        avgScore
-                );
+            if (aggregate.strongHits() < INTERESTING_REPO_MIN_MATCHES) {
+                continue;
             }
+            selected.put(entry.getKey(), aggregate);
         }
-        return best;
+        return selected;
     }
 
-    private static void showOpenSourceAlert(Component parent, OpenSourceAlertCandidate candidate) {
-        if (candidate == null) {
+    private static Map<String, CloneExecutionResult> cloneInterestingRepos(Path outputDir,
+                                                                           Map<String, RepoAggregate> interestingRepos,
+                                                                           BufferedWriter writer,
+                                                                           ConsoleService consoleService) throws IOException {
+        Map<String, CloneExecutionResult> cloneResults = new LinkedHashMap<>();
+        Path reposDir = outputDir.resolve(INTERESTING_REPOS_DIR);
+        Files.createDirectories(reposDir);
+
+        for (Map.Entry<String, RepoAggregate> entry : interestingRepos.entrySet()) {
+            String repoKey = entry.getKey();
+            RepoAggregate aggregate = entry.getValue();
+
+            String folderName = sanitizeRepoFolderName(repoKey);
+            Path targetDir = reposDir.resolve(folderName);
+
+            CloneExecutionResult result;
+            if (Files.isDirectory(targetDir)) {
+                result = new CloneExecutionResult(
+                        "already_present",
+                        targetDir.toString(),
+                        aggregate.cloneUrl,
+                        ""
+                );
+            } else if (aggregate.cloneUrl == null || aggregate.cloneUrl.isBlank()) {
+                result = new CloneExecutionResult(
+                        "missing_clone_url",
+                        targetDir.toString(),
+                        "",
+                        ""
+                );
+            } else {
+                result = cloneRepository(aggregate.cloneUrl, targetDir, outputDir);
+            }
+            cloneResults.put(repoKey, result);
+            logLine(
+                    writer,
+                    consoleService,
+                    "Interesting repo " + repoKey + " -> " + result.status + " (" + result.targetDir + ")"
+            );
+        }
+        return cloneResults;
+    }
+
+    private static Path writeInterestingReposSummary(Path outputDir,
+                                                     Map<String, RepoAggregate> interestingRepos,
+                                                     Map<String, CloneExecutionResult> cloneResults) throws IOException {
+        Path reposDir = outputDir.resolve(INTERESTING_REPOS_DIR);
+        Files.createDirectories(reposDir);
+        Path summaryPath = reposDir.resolve("interesting_repos.json");
+
+        JsonObject root = new JsonObject();
+        for (Map.Entry<String, RepoAggregate> entry : interestingRepos.entrySet()) {
+            String repoKey = entry.getKey();
+            RepoAggregate aggregate = entry.getValue();
+            JsonObject repoObj = new JsonObject();
+            repoObj.addProperty("match_count", aggregate.count);
+            repoObj.addProperty("average_match_score", roundTo3(aggregate.averageMatchScore()));
+            repoObj.addProperty("strong_hits", aggregate.strongHits());
+
+            JsonArray confidences = new JsonArray();
+            for (Integer confidence : aggregate.resultConfidences) {
+                confidences.add(confidence);
+            }
+            repoObj.add("result_confidences", confidences);
+
+            JsonArray hashes = new JsonArray();
+            for (String hash : aggregate.hashes) {
+                hashes.add(hash);
+            }
+            repoObj.add("hashes", hashes);
+
+            if (aggregate.repoUrl == null || aggregate.repoUrl.isBlank()) {
+                repoObj.add("repo_url", JsonNull.INSTANCE);
+            } else {
+                repoObj.addProperty("repo_url", aggregate.repoUrl);
+            }
+
+            if (aggregate.cloneUrl == null || aggregate.cloneUrl.isBlank()) {
+                repoObj.add("clone_url", JsonNull.INSTANCE);
+            } else {
+                repoObj.addProperty("clone_url", aggregate.cloneUrl);
+            }
+
+            CloneExecutionResult cloneResult = cloneResults.get(repoKey);
+            JsonObject cloneObj = new JsonObject();
+            if (cloneResult == null) {
+                cloneObj.addProperty("status", "missing_result");
+                cloneObj.addProperty("target_dir", "");
+                cloneObj.addProperty("clone_url", aggregate.cloneUrl == null ? "" : aggregate.cloneUrl);
+            } else {
+                cloneObj.addProperty("status", cloneResult.status);
+                cloneObj.addProperty("target_dir", cloneResult.targetDir);
+                cloneObj.addProperty("clone_url", cloneResult.cloneUrl == null ? "" : cloneResult.cloneUrl);
+                if (cloneResult.stderr != null && !cloneResult.stderr.isBlank()) {
+                    cloneObj.addProperty("stderr", cloneResult.stderr);
+                }
+            }
+            repoObj.add("clone", cloneObj);
+            root.add(repoKey, repoObj);
+        }
+        String json = new GsonBuilder().setPrettyPrinting().create().toJson(root);
+        Files.writeString(summaryPath, json, StandardCharsets.UTF_8);
+        return summaryPath;
+    }
+
+    private static InterestingReposAlert buildInterestingReposAlert(Map<String, RepoAggregate> interestingRepos,
+                                                                    Map<String, CloneExecutionResult> cloneResults,
+                                                                    Path summaryPath) {
+        if (interestingRepos.isEmpty()) {
+            return null;
+        }
+
+        int clonedCount = 0;
+        int alreadyPresentCount = 0;
+        int failedCount = 0;
+        List<String> details = new ArrayList<>();
+
+        for (Map.Entry<String, RepoAggregate> entry : interestingRepos.entrySet()) {
+            String repoKey = entry.getKey();
+            RepoAggregate aggregate = entry.getValue();
+            CloneExecutionResult cloneResult = cloneResults.get(repoKey);
+            String status = cloneResult == null ? "missing_result" : cloneResult.status;
+
+            if ("cloned".equals(status)) {
+                clonedCount++;
+            } else if ("already_present".equals(status)) {
+                alreadyPresentCount++;
+            } else {
+                failedCount++;
+            }
+
+            details.add(
+                    repoKey + " (" + aggregate.count + " hits, avg " +
+                            String.format("%.2f", aggregate.averageMatchScore()) + "): " + status
+            );
+        }
+
+        return new InterestingReposAlert(
+                summaryPath,
+                interestingRepos.size(),
+                clonedCount,
+                alreadyPresentCount,
+                failedCount,
+                details
+        );
+    }
+
+    private static void showInterestingReposAlert(Component parent, InterestingReposAlert alert) {
+        if (alert == null) {
             return;
         }
-        String link = (candidate.repoUrl != null && !candidate.repoUrl.isBlank())
-                ? candidate.repoUrl
-                : candidate.repoDisplayName;
-        String safeLink = escapeHtml(link);
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.add(new JLabel("Likely open-source file detected."));
-        panel.add(new JLabel(candidate.count + " strings scored above " +
-                OPEN_SOURCE_ALERT_SCORE_THRESHOLD + " from the same repository."));
-        panel.add(new JLabel("Repository: " + candidate.repoDisplayName));
+        panel.add(new JLabel("Interesting repositories detected and processed."));
+        panel.add(new JLabel("Total: " + alert.totalRepos +
+                ", cloned: " + alert.clonedCount +
+                ", already present: " + alert.alreadyPresentCount +
+                ", failed: " + alert.failedCount));
+        panel.add(new JLabel("Summary written to: " + alert.summaryPath));
 
-        JEditorPane linkPane = new JEditorPane(
-                "text/html",
-                "<html>Repo link: <a href=\"" + safeLink + "\">" + safeLink + "</a></html>"
-        );
-        linkPane.setEditable(false);
-        linkPane.setOpaque(false);
-        linkPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-        linkPane.addHyperlinkListener(e -> {
-            if (e.getEventType() != HyperlinkEvent.EventType.ACTIVATED) {
-                return;
-            }
-            try {
-                if (Desktop.isDesktopSupported()) {
-                    Desktop.getDesktop().browse(new URI(e.getURL().toString()));
-                }
-            } catch (Exception ex) {
-                Msg.showError(SearchForStringsAction.class, parent,
-                        "Failed to open URL", ex.getMessage(), ex);
-            }
-        });
-        panel.add(linkPane);
+        JTextArea details = new JTextArea(String.join(System.lineSeparator(), alert.details));
+        details.setEditable(false);
+        details.setLineWrap(true);
+        details.setWrapStyleWord(true);
+        JScrollPane detailsScroll = new JScrollPane(details);
+        detailsScroll.setPreferredSize(new java.awt.Dimension(760, 220));
+        panel.add(detailsScroll);
 
-        JOptionPane.showMessageDialog(parent, panel, "Likely Open-Source Match", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(parent, panel, "Interesting Repositories", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    private static String escapeHtml(String value) {
+    private static CloneExecutionResult cloneRepository(String cloneUrl, Path targetDir, Path workingDir) {
+        List<String> cmd = List.of(
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                cloneUrl,
+                targetDir.toString()
+        );
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(workingDir.toFile());
+        pb.redirectErrorStream(true);
+
+        StringBuilder output = new StringBuilder();
+        try {
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append(System.lineSeparator());
+                }
+            }
+            int exit = process.waitFor();
+            if (exit == 0) {
+                return new CloneExecutionResult("cloned", targetDir.toString(), cloneUrl, "");
+            }
+            return new CloneExecutionResult("clone_failed", targetDir.toString(), cloneUrl, output.toString().trim());
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return new CloneExecutionResult("clone_failed", targetDir.toString(), cloneUrl, e.getMessage());
+        }
+    }
+
+    private static String extractRepoPath(String repo, String repoUrl) {
+        if (repo != null && !repo.isBlank()) {
+            String cleaned = repo.trim();
+            if (cleaned.startsWith("/")) {
+                cleaned = cleaned.substring(1);
+            }
+            if (!cleaned.isBlank()) {
+                return stripGitSuffix(cleaned);
+            }
+        }
+
+        String normalized = normalizeSourcegraphUrl(repoUrl);
+        if (normalized == null || normalized.isBlank()) {
+            return null;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(normalized);
+            String path = uri.getPath();
+            if (path == null || path.isBlank()) {
+                return null;
+            }
+            if (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+            int blobIdx = path.indexOf("/-/");
+            if (blobIdx > 0) {
+                path = path.substring(0, blobIdx);
+            }
+            return stripGitSuffix(path);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String stripGitSuffix(String value) {
         if (value == null) {
             return "";
         }
-        return value
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;");
+        String out = value.trim();
+        while (out.endsWith("/")) {
+            out = out.substring(0, out.length() - 1);
+        }
+        if (out.endsWith(".git")) {
+            out = out.substring(0, out.length() - 4);
+        }
+        return out;
+    }
+
+    private static String sanitizeRepoFolderName(String repoName) {
+        if (repoName == null || repoName.isBlank()) {
+            return "unknown_repo";
+        }
+        String folder = repoName.replace("/", "__").replace("\\", "__");
+        return folder.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    private static double roundTo3(double value) {
+        return Math.round(value * 1000.0) / 1000.0;
     }
 
     private static String normalizeSourcegraphUrl(String url) {
@@ -618,44 +879,92 @@ public class SearchForStringsAction extends DockingAction {
         final String repoKey;
         final String repoDisplayName;
         final String repoUrl;
+        final String cloneUrl;
 
-        RepoMatchMeta(String repoKey, String repoDisplayName, String repoUrl) {
+        RepoMatchMeta(String repoKey, String repoDisplayName, String repoUrl, String cloneUrl) {
             this.repoKey = repoKey;
             this.repoDisplayName = repoDisplayName;
             this.repoUrl = repoUrl;
+            this.cloneUrl = cloneUrl;
         }
     }
 
     private static final class RepoAggregate {
         final String repoDisplayName;
         String repoUrl;
+        String cloneUrl;
         int count;
         float scoreSum;
+        final List<Integer> resultConfidences = new ArrayList<>();
+        final List<String> hashes = new ArrayList<>();
 
-        RepoAggregate(String repoDisplayName, String repoUrl) {
+        RepoAggregate(String repoDisplayName, String repoUrl, String cloneUrl) {
             this.repoDisplayName = repoDisplayName;
             this.repoUrl = repoUrl;
+            this.cloneUrl = cloneUrl;
             this.count = 0;
             this.scoreSum = 0.0f;
         }
 
-        void addScore(float score) {
+        void addHit(String hash, float score, int resultConfidence) {
             count++;
             scoreSum += score;
+            resultConfidences.add(resultConfidence);
+            hashes.add(hash);
+        }
+
+        float averageMatchScore() {
+            if (count == 0) {
+                return 0.0f;
+            }
+            return scoreSum / count;
+        }
+
+        int strongHits() {
+            int hits = 0;
+            for (Integer confidence : resultConfidences) {
+                if (confidence != null && confidence >= INTERESTING_REPO_CONF_THRESHOLD) {
+                    hits++;
+                }
+            }
+            return hits;
         }
     }
 
-    private static final class OpenSourceAlertCandidate {
-        final String repoDisplayName;
-        final String repoUrl;
-        final int count;
-        final float averageScore;
+    private static final class CloneExecutionResult {
+        final String status;
+        final String targetDir;
+        final String cloneUrl;
+        final String stderr;
 
-        OpenSourceAlertCandidate(String repoDisplayName, String repoUrl, int count, float averageScore) {
-            this.repoDisplayName = repoDisplayName;
-            this.repoUrl = repoUrl;
-            this.count = count;
-            this.averageScore = averageScore;
+        CloneExecutionResult(String status, String targetDir, String cloneUrl, String stderr) {
+            this.status = status;
+            this.targetDir = targetDir;
+            this.cloneUrl = cloneUrl;
+            this.stderr = stderr;
+        }
+    }
+
+    private static final class InterestingReposAlert {
+        final Path summaryPath;
+        final int totalRepos;
+        final int clonedCount;
+        final int alreadyPresentCount;
+        final int failedCount;
+        final List<String> details;
+
+        InterestingReposAlert(Path summaryPath,
+                              int totalRepos,
+                              int clonedCount,
+                              int alreadyPresentCount,
+                              int failedCount,
+                              List<String> details) {
+            this.summaryPath = summaryPath;
+            this.totalRepos = totalRepos;
+            this.clonedCount = clonedCount;
+            this.alreadyPresentCount = alreadyPresentCount;
+            this.failedCount = failedCount;
+            this.details = details;
         }
     }
 
@@ -666,6 +975,15 @@ public class SearchForStringsAction extends DockingAction {
         try (Stream<Path> walk = Files.walk(path)) {
             walk.sorted((a, b) -> b.compareTo(a)).forEach(p -> {
                 try {
+                    java.io.File f = p.toFile();
+                    if (!f.canWrite()) {
+                        f.setWritable(true);
+                    }
+                    try {
+                        Files.setAttribute(p, "dos:readonly", false);
+                    } catch (Exception ignored) {
+                        // ignore non-Windows filesystems and unsupported attributes
+                    }
                     Files.deleteIfExists(p);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
