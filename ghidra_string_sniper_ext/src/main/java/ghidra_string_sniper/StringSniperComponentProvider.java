@@ -20,12 +20,26 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import docking.ComponentProvider;
+import ghidra.app.util.importer.MessageLog;
+import ghidra.app.util.importer.ProgramLoader;
+import ghidra.app.util.opinion.LoadResults;
+import ghidra.feature.vt.api.db.VTSessionDB;
+import ghidra.feature.vt.api.main.VTSession;
+import ghidra.feature.vt.api.util.VTOptions;
+import ghidra.feature.vt.gui.actions.AutoVersionTrackingTask;
+import ghidra.feature.vt.gui.util.VTOptionDefines;
+import ghidra.framework.model.DomainFolder;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.framework.model.Project;
+import ghidra.framework.options.ToolOptions;
 import resources.Icons;
 import java.net.URI;
 import ghidra.program.model.listing.Program;
+import ghidra.util.InvalidNameException;
 import ghidra.util.Msg;
+import ghidra.util.exception.CancelledException;
+import ghidra.util.exception.VersionException;
+import ghidra.util.task.TaskMonitor;
 
 public class StringSniperComponentProvider extends ComponentProvider {
     private Program currentProgram;
@@ -39,6 +53,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private JPanel resultsPanel;
     private JPanel reposPanel;
     private Path lastOutputDir;
+    private final Map<String, CompileExecutionResult> compileResultsByRepo = new HashMap<>();
     private static final String AGENTIC_RESULT_MARKER = "GSS_AGENTIC_RESULT_JSON=";
     private static final Pattern AGENT_STEP_PATTERN = Pattern.compile(".*Agent step\\s+(\\d+)/(\\d+).*");
 
@@ -75,6 +90,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     }
 
     public void clearRepos() {
+        compileResultsByRepo.clear();
         reposPanel.removeAll();
         reposPanel.add(new JLabel("No interesting repositories found yet."));
         reposPanel.revalidate();
@@ -91,6 +107,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
     public void setLastOutputDir(Path outputDir) {
         this.lastOutputDir = outputDir;
+        compileResultsByRepo.clear();
     }
 
     public Path getProjectDir() {
@@ -626,13 +643,15 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         JButton autoCompile = new JButton("Auto Compile");
         JButton addToVersionTracking = new JButton("Add to Version Tracking");
-        addToVersionTracking.setEnabled(false);
-        addToVersionTracking.addActionListener(e -> JOptionPane.showMessageDialog(
-                row,
-                "Version Tracking integration is not implemented yet for repo rows.",
-                "Not Implemented",
-                JOptionPane.INFORMATION_MESSAGE
-        ));
+        String repoKey = getRepoKey(repo);
+        CompileExecutionResult cachedCompileResult = compileResultsByRepo.get(repoKey);
+        boolean hasCompiledResult = cachedCompileResult != null && cachedCompileResult.success;
+        if (hasCompiledResult) {
+            autoCompile.setText("Compiled");
+            autoCompile.setEnabled(false);
+        }
+        addToVersionTracking.setEnabled(hasCompiledResult);
+        addToVersionTracking.addActionListener(e -> runAddToVersionTracking(repo, row, addToVersionTracking));
 
         autoCompile.addActionListener(e -> runAutoCompile(repo, row, autoCompile, addToVersionTracking));
         buttons.add(autoCompile);
@@ -720,6 +739,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     progressDialog.statusLabel.setText(result.success ? "Compilation finished." : "Compilation failed.");
                     progressDialog.dialog.dispose();
                     if (result.success) {
+                        compileResultsByRepo.put(getRepoKey(repo), result);
                         button.setEnabled(false);
                         button.setText("Compiled");
                         addToVersionTrackingButton.setEnabled(true);
@@ -732,6 +752,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
                                 "Compile Success",
                                 JOptionPane.INFORMATION_MESSAGE);
                     } else {
+                        compileResultsByRepo.remove(getRepoKey(repo));
                         button.setEnabled(true);
                         button.setText(originalText);
                         addToVersionTrackingButton.setEnabled(false);
@@ -741,6 +762,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     }
                 } catch (Exception ex) {
                     progressDialog.dialog.dispose();
+                    compileResultsByRepo.remove(getRepoKey(repo));
                     button.setEnabled(true);
                     button.setText(originalText);
                     addToVersionTrackingButton.setEnabled(false);
@@ -750,6 +772,330 @@ public class StringSniperComponentProvider extends ComponentProvider {
             }
         };
         worker.execute();
+    }
+
+    private void runAddToVersionTracking(RepoData repo, Component parent, JButton button) {
+        if (repo == null) {
+            return;
+        }
+        Program destinationProgram = getProgram();
+        if (destinationProgram == null) {
+            JOptionPane.showMessageDialog(parent, "Open a destination program before running version tracking.",
+                    "No Program", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        List<Path> binaries = resolveCompiledBinaries(repo);
+        if (binaries.isEmpty()) {
+            JOptionPane.showMessageDialog(parent,
+                    "No compiled binaries found for this repository. Run Auto Compile first.",
+                    "No Compiled Binary",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Path selectedBinary = chooseBinaryPath(parent, binaries);
+        if (selectedBinary == null) {
+            return;
+        }
+
+        button.setEnabled(false);
+        CompileProgressDialog progressDialog = createVersionTrackingProgressDialog(parent, repo.repoName);
+        progressDialog.dialog.setVisible(true);
+
+        SwingWorker<VersionTrackingExecutionResult, String> worker = new SwingWorker<>() {
+            @Override
+            protected VersionTrackingExecutionResult doInBackground() {
+                publish("Importing compiled program...");
+                return runVersionTrackingForBinary(repo, selectedBinary, destinationProgram, status -> publish(status));
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                if (chunks == null || chunks.isEmpty()) {
+                    return;
+                }
+                String latest = chunks.get(chunks.size() - 1);
+                progressDialog.statusLabel.setText(latest);
+            }
+
+            @Override
+            protected void done() {
+                button.setEnabled(true);
+                progressDialog.dialog.dispose();
+                try {
+                    VersionTrackingExecutionResult result = get();
+                    if (result.success) {
+                        JOptionPane.showMessageDialog(parent,
+                                "Version tracking completed.\n\n" + result.message,
+                                "Version Tracking Complete",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        Msg.showError(StringSniperComponentProvider.this, null,
+                                "Version Tracking Failed", result.message);
+                    }
+                } catch (Exception e) {
+                    Msg.showError(StringSniperComponentProvider.this, null,
+                            "Version Tracking Failed", e.getMessage(), e);
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private List<Path> resolveCompiledBinaries(RepoData repo) {
+        List<Path> binaries = new ArrayList<>();
+        String repoKey = getRepoKey(repo);
+        CompileExecutionResult cached = compileResultsByRepo.get(repoKey);
+        if (cached != null) {
+            for (String binaryPath : cached.binaries) {
+                if (binaryPath == null || binaryPath.isBlank()) {
+                    continue;
+                }
+                try {
+                    Path path = Path.of(binaryPath);
+                    if (Files.isRegularFile(path)) {
+                        binaries.add(path);
+                    }
+                } catch (RuntimeException ignored) {
+                }
+            }
+            if (binaries.isEmpty()) {
+                binaries.addAll(listBinaryFilesInDir(cached.outputDir));
+            }
+        }
+
+        if (binaries.isEmpty() && lastOutputDir != null) {
+            Path compiledDir = lastOutputDir.resolve("compiled").resolve(sanitizePathSegment(repo.repoName));
+            binaries.addAll(listBinaryFilesInDir(compiledDir));
+        }
+        return dedupePaths(binaries);
+    }
+
+    private static List<Path> listBinaryFilesInDir(Path dir) {
+        if (dir == null || !Files.isDirectory(dir)) {
+            return Collections.emptyList();
+        }
+        List<Path> files = new ArrayList<>();
+        try (var stream = Files.list(dir)) {
+            stream.filter(Files::isRegularFile).forEach(path -> {
+                String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+                if (name.endsWith(".json") || name.endsWith(".log") || name.endsWith(".txt")) {
+                    return;
+                }
+                files.add(path);
+            });
+        } catch (IOException ignored) {
+        }
+        return files;
+    }
+
+    private static List<Path> dedupePaths(List<Path> input) {
+        if (input == null || input.isEmpty()) {
+            return Collections.emptyList();
+        }
+        LinkedHashMap<String, Path> deduped = new LinkedHashMap<>();
+        for (Path path : input) {
+            if (path == null) {
+                continue;
+            }
+            try {
+                deduped.putIfAbsent(path.toAbsolutePath().normalize().toString(), path);
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return new ArrayList<>(deduped.values());
+    }
+
+    private static Path chooseBinaryPath(Component parent, List<Path> binaries) {
+        if (binaries == null || binaries.isEmpty()) {
+            return null;
+        }
+        if (binaries.size() == 1) {
+            return binaries.get(0);
+        }
+        List<String> options = new ArrayList<>();
+        for (Path binary : binaries) {
+            options.add(binary.toString());
+        }
+        Object selected = JOptionPane.showInputDialog(
+                parent,
+                "Multiple binaries were found. Select one for version tracking:",
+                "Select Compiled Binary",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options.toArray(new String[0]),
+                options.get(0)
+        );
+        if (selected == null) {
+            return null;
+        }
+        String selectedValue = selected.toString();
+        for (Path binary : binaries) {
+            if (binary.toString().equals(selectedValue)) {
+                return binary;
+            }
+        }
+        return null;
+    }
+
+    private CompileProgressDialog createVersionTrackingProgressDialog(Component parent, String repoName) {
+        java.awt.Window owner = parent == null ? null : SwingUtilities.getWindowAncestor(parent);
+        JDialog dialog = new JDialog(owner, "Version Tracking Progress", Dialog.ModalityType.MODELESS);
+        dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+
+        JPanel root = new JPanel();
+        root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JLabel title = new JLabel("Running version tracking for: " + repoName);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        root.add(title);
+        root.add(Box.createVerticalStrut(8));
+
+        JProgressBar bar = new JProgressBar();
+        bar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        bar.setIndeterminate(true);
+        root.add(bar);
+        root.add(Box.createVerticalStrut(6));
+
+        JLabel status = new JLabel("Starting...");
+        status.setAlignmentX(Component.LEFT_ALIGNMENT);
+        root.add(status);
+
+        dialog.setContentPane(root);
+        dialog.setSize(560, 150);
+        dialog.setLocationRelativeTo(parent);
+        return new CompileProgressDialog(dialog, bar, status);
+    }
+
+    private VersionTrackingExecutionResult runVersionTrackingForBinary(RepoData repo,
+                                                                       Path binaryPath,
+                                                                       Program destinationProgram,
+                                                                       Consumer<String> statusConsumer) {
+        if (binaryPath == null || !Files.isRegularFile(binaryPath)) {
+            return new VersionTrackingExecutionResult(false, "Compiled binary not found: " + binaryPath);
+        }
+        if (destinationProgram == null) {
+            return new VersionTrackingExecutionResult(false, "No destination program is open.");
+        }
+        if (pluginTool == null || pluginTool.getProject() == null) {
+            return new VersionTrackingExecutionResult(false, "No active Ghidra project.");
+        }
+
+        Project project = pluginTool.getProject();
+        String sourceProgramName = sanitizePathSegment(repo.repoName + "_" + binaryPath.getFileName());
+        String importFolderPath = "/gss_compiled/" + sanitizePathSegment(destinationProgram.getName());
+        String sessionBaseName = sanitizePathSegment(sourceProgramName + "_to_" + destinationProgram.getName());
+
+        MessageLog importLog = new MessageLog();
+        LoadResults<Program> loadResults = null;
+        Program sourceProgram = null;
+        VTSession session = null;
+        Object consumer = new Object();
+
+        try {
+            if (statusConsumer != null) {
+                statusConsumer.accept("Importing binary into project...");
+            }
+            loadResults = ProgramLoader.builder()
+                    .source(binaryPath.toFile())
+                    .project(project)
+                    .projectFolderPath(importFolderPath)
+                    .name(sourceProgramName)
+                    .log(importLog)
+                    .monitor(TaskMonitor.DUMMY)
+                    .load();
+            loadResults.save(TaskMonitor.DUMMY);
+            sourceProgram = loadResults.getPrimaryDomainObject(consumer);
+
+            if (statusConsumer != null) {
+                statusConsumer.accept("Creating version tracking session...");
+            }
+            DomainFolder rootFolder = project.getProjectData().getRootFolder();
+            String sessionName = buildUniqueDomainFileName(rootFolder, sessionBaseName);
+            session = new VTSessionDB(sessionName, sourceProgram, destinationProgram, consumer);
+            rootFolder.createFile(sessionName, session, TaskMonitor.DUMMY);
+            session.save();
+
+            if (statusConsumer != null) {
+                statusConsumer.accept("Running auto correlators...");
+            }
+            AutoVersionTrackingTask autoTask = new AutoVersionTrackingTask(session, createAutoVTOptions());
+            autoTask.monitoredRun(TaskMonitor.DUMMY);
+            session.save();
+            destinationProgram.save("String Sniper auto version tracking", TaskMonitor.DUMMY);
+
+            int matchSetCount = session.getMatchSets().size();
+            String importedPath = sourceProgram.getDomainFile() != null ? sourceProgram.getDomainFile().getPathname() : "(unsaved)";
+            String message = "Session: " + sessionName +
+                    "\nSource Program: " + importedPath +
+                    "\nDestination Program: " + destinationProgram.getName() +
+                    "\nMatch Sets: " + matchSetCount;
+            return new VersionTrackingExecutionResult(true, message);
+        } catch (IOException | VersionException | CancelledException | InvalidNameException e) {
+            String details = importLog.hasMessages() ? "\n\nImporter Log:\n" + importLog.toString() : "";
+            return new VersionTrackingExecutionResult(false, e.getMessage() + details);
+        } catch (Exception e) {
+            String details = importLog.hasMessages() ? "\n\nImporter Log:\n" + importLog.toString() : "";
+            return new VersionTrackingExecutionResult(false, e.getMessage() + details);
+        } finally {
+            if (session != null) {
+                session.release(consumer);
+            }
+            if (sourceProgram != null) {
+                sourceProgram.release(consumer);
+            }
+            if (loadResults != null) {
+                loadResults.close();
+            }
+        }
+    }
+
+    private static String buildUniqueDomainFileName(DomainFolder folder, String baseName) {
+        String safeBase = sanitizePathSegment(baseName);
+        if (folder.getFile(safeBase) == null) {
+            return safeBase;
+        }
+        int index = 1;
+        while (folder.getFile(safeBase + "_" + index) != null) {
+            index++;
+        }
+        return safeBase + "_" + index;
+    }
+
+    private static String getRepoKey(RepoData repo) {
+        if (repo == null) {
+            return "";
+        }
+        if (repo.targetDir != null && !repo.targetDir.isBlank()) {
+            return repo.targetDir;
+        }
+        if (repo.githubUrl != null && !repo.githubUrl.isBlank()) {
+            return repo.githubUrl;
+        }
+        return repo.repoName == null ? "" : repo.repoName;
+    }
+
+    private static ToolOptions createAutoVTOptions() {
+        ToolOptions toolOptions = new VTOptions("Auto Version Tracking Options");
+        toolOptions.setBoolean(VTOptionDefines.CREATE_IMPLIED_MATCHES_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.APPLY_IMPLIED_MATCHES_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.RUN_EXACT_SYMBOL_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.RUN_EXACT_DATA_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.RUN_EXACT_FUNCTION_BYTES_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.RUN_EXACT_FUNCTION_INST_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.RUN_DUPE_FUNCTION_OPTION, true);
+        toolOptions.setBoolean(VTOptionDefines.RUN_REF_CORRELATORS_OPTION, true);
+        toolOptions.setInt(VTOptionDefines.DATA_CORRELATOR_MIN_LEN_OPTION, 5);
+        toolOptions.setInt(VTOptionDefines.SYMBOL_CORRELATOR_MIN_LEN_OPTION, 3);
+        toolOptions.setInt(VTOptionDefines.FUNCTION_CORRELATOR_MIN_LEN_OPTION, 10);
+        toolOptions.setInt(VTOptionDefines.DUPE_FUNCTION_CORRELATOR_MIN_LEN_OPTION, 10);
+        toolOptions.setInt(VTOptionDefines.MIN_VOTES_OPTION, 2);
+        toolOptions.setInt(VTOptionDefines.MAX_CONFLICTS_OPTION, 0);
+        toolOptions.setDouble(VTOptionDefines.REF_CORRELATOR_MIN_SCORE_OPTION, 0.95);
+        toolOptions.setDouble(VTOptionDefines.REF_CORRELATOR_MIN_CONF_OPTION, 10.0);
+        return toolOptions;
     }
 
     private CompileProgressDialog createCompileProgressDialog(Component parent, String repoName) {
@@ -1028,6 +1374,16 @@ public class StringSniperComponentProvider extends ComponentProvider {
 
         CompileProgressUpdate(int progress, String message) {
             this.progress = progress;
+            this.message = message == null ? "" : message;
+        }
+    }
+
+    private static final class VersionTrackingExecutionResult {
+        final boolean success;
+        final String message;
+
+        VersionTrackingExecutionResult(boolean success, String message) {
+            this.success = success;
             this.message = message == null ? "" : message;
         }
     }
