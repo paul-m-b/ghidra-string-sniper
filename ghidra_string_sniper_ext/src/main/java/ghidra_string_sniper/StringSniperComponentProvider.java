@@ -13,6 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -37,6 +40,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private JPanel reposPanel;
     private Path lastOutputDir;
     private static final String AGENTIC_RESULT_MARKER = "GSS_AGENTIC_RESULT_JSON=";
+    private static final Pattern AGENT_STEP_PATTERN = Pattern.compile(".*Agent step\\s+(\\d+)/(\\d+).*");
 
     public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
@@ -621,15 +625,25 @@ public class StringSniperComponentProvider extends ComponentProvider {
         buttons.add(visitRepo);
 
         JButton autoCompile = new JButton("Auto Compile");
-        autoCompile.addActionListener(e -> runAutoCompile(repo, row, autoCompile));
+        JButton addToVersionTracking = new JButton("Add to Version Tracking");
+        addToVersionTracking.setEnabled(false);
+        addToVersionTracking.addActionListener(e -> JOptionPane.showMessageDialog(
+                row,
+                "Version Tracking integration is not implemented yet for repo rows.",
+                "Not Implemented",
+                JOptionPane.INFORMATION_MESSAGE
+        ));
+
+        autoCompile.addActionListener(e -> runAutoCompile(repo, row, autoCompile, addToVersionTracking));
         buttons.add(autoCompile);
+        buttons.add(addToVersionTracking);
 
         row.add(Box.createVerticalStrut(4));
         row.add(buttons);
         return row;
     }
 
-    private void runAutoCompile(RepoData repo, Component parent, JButton button) {
+    private void runAutoCompile(RepoData repo, Component parent, JButton button, JButton addToVersionTrackingButton) {
         if (repo == null || repo.targetDir == null || repo.targetDir.isBlank()) {
             JOptionPane.showMessageDialog(parent, "No local repository path available for this row.",
                     "Compile Unavailable", JOptionPane.WARNING_MESSAGE);
@@ -666,26 +680,49 @@ public class StringSniperComponentProvider extends ComponentProvider {
         final String originalText = button.getText();
         button.setEnabled(false);
         button.setText("Compiling...");
+        final CompileProgressDialog progressDialog = createCompileProgressDialog(parent, repo.repoName);
+        progressDialog.dialog.setVisible(true);
 
-        SwingWorker<CompileExecutionResult, Void> worker = new SwingWorker<>() {
+        SwingWorker<CompileExecutionResult, CompileProgressUpdate> worker = new SwingWorker<>() {
             @Override
             protected CompileExecutionResult doInBackground() {
                 try {
+                    publish(new CompileProgressUpdate(5, "Preparing compile output directory..."));
                     clearDirectory(compiledDir);
                     Files.createDirectories(compiledDir);
-                    return runAgenticCompiler(repoPath, compiledDir, tokenPath);
+                    publish(new CompileProgressUpdate(12, "Launching agentic compiler..."));
+                    return runAgenticCompiler(repoPath, compiledDir, tokenPath, line -> {
+                        CompileProgressUpdate update = progressFromAgentLine(line);
+                        if (update != null) {
+                            publish(update);
+                        }
+                    });
                 } catch (IOException ioe) {
                     return new CompileExecutionResult(false, ioe.getMessage(), compiledDir, Collections.emptyList(), "");
                 }
             }
 
             @Override
+            protected void process(List<CompileProgressUpdate> chunks) {
+                if (chunks == null || chunks.isEmpty()) {
+                    return;
+                }
+                CompileProgressUpdate latest = chunks.get(chunks.size() - 1);
+                progressDialog.bar.setValue(Math.max(0, Math.min(100, latest.progress)));
+                progressDialog.statusLabel.setText(latest.message);
+            }
+
+            @Override
             protected void done() {
-                button.setEnabled(true);
-                button.setText(originalText);
                 try {
                     CompileExecutionResult result = get();
+                    progressDialog.bar.setValue(100);
+                    progressDialog.statusLabel.setText(result.success ? "Compilation finished." : "Compilation failed.");
+                    progressDialog.dialog.dispose();
                     if (result.success) {
+                        button.setEnabled(false);
+                        button.setText("Compiled");
+                        addToVersionTrackingButton.setEnabled(true);
                         String binariesSummary = result.binaries.isEmpty()
                                 ? "(No binary list reported)"
                                 : String.join(System.lineSeparator(), result.binaries);
@@ -695,17 +732,90 @@ public class StringSniperComponentProvider extends ComponentProvider {
                                 "Compile Success",
                                 JOptionPane.INFORMATION_MESSAGE);
                     } else {
+                        button.setEnabled(true);
+                        button.setText(originalText);
+                        addToVersionTrackingButton.setEnabled(false);
                         Msg.showError(StringSniperComponentProvider.this, null,
                                 "Compile Failed",
                                 "Agentic sandbox compile failed.\n\n" + result.logOutput);
                     }
                 } catch (Exception ex) {
+                    progressDialog.dialog.dispose();
+                    button.setEnabled(true);
+                    button.setText(originalText);
+                    addToVersionTrackingButton.setEnabled(false);
                     Msg.showError(StringSniperComponentProvider.this, null,
                             "Compile Failed", ex.getMessage(), ex);
                 }
             }
         };
         worker.execute();
+    }
+
+    private CompileProgressDialog createCompileProgressDialog(Component parent, String repoName) {
+        java.awt.Window owner = parent == null ? null : SwingUtilities.getWindowAncestor(parent);
+        JDialog dialog = new JDialog(owner, "Auto Compile Progress", Dialog.ModalityType.MODELESS);
+        dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+
+        JPanel root = new JPanel();
+        root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JLabel title = new JLabel("Compiling repository: " + repoName);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        root.add(title);
+        root.add(Box.createVerticalStrut(8));
+
+        JProgressBar bar = new JProgressBar(0, 100);
+        bar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        bar.setValue(0);
+        bar.setStringPainted(true);
+        root.add(bar);
+        root.add(Box.createVerticalStrut(6));
+
+        JLabel status = new JLabel("Starting...");
+        status.setAlignmentX(Component.LEFT_ALIGNMENT);
+        root.add(status);
+
+        dialog.setContentPane(root);
+        dialog.setSize(560, 150);
+        dialog.setLocationRelativeTo(parent);
+        return new CompileProgressDialog(dialog, bar, status);
+    }
+
+    private static CompileProgressUpdate progressFromAgentLine(String line) {
+        if (line == null || line.isBlank()) {
+            return null;
+        }
+        String msg = line.trim();
+
+        Matcher stepMatch = AGENT_STEP_PATTERN.matcher(msg);
+        if (stepMatch.matches()) {
+            try {
+                int cur = Integer.parseInt(stepMatch.group(1));
+                int total = Integer.parseInt(stepMatch.group(2));
+                if (total > 0) {
+                    int pct = 15 + (int) Math.round((cur * 75.0) / total);
+                    return new CompileProgressUpdate(Math.min(95, Math.max(15, pct)), "Running step " + cur + "/" + total + "...");
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+
+        String lower = msg.toLowerCase(Locale.ROOT);
+        if (lower.contains("preparing workspace")) {
+            return new CompileProgressUpdate(18, "Preparing workspace...");
+        }
+        if (lower.contains("collected") && lower.contains("files")) {
+            return new CompileProgressUpdate(22, "Collecting project context...");
+        }
+        if (lower.contains("compiled") && lower.contains("binary")) {
+            return new CompileProgressUpdate(95, "Finalizing compiled artifacts...");
+        }
+        if (lower.contains("error") || lower.contains("failed")) {
+            return new CompileProgressUpdate(90, "Compile encountered an error...");
+        }
+        return new CompileProgressUpdate(30, msg);
     }
 
     private Path ensureOpenRouterToken(Component parent) {
@@ -749,7 +859,10 @@ public class StringSniperComponentProvider extends ComponentProvider {
         }
     }
 
-    private static CompileExecutionResult runAgenticCompiler(Path repoPath, Path outputDir, Path tokenPath) {
+    private static CompileExecutionResult runAgenticCompiler(Path repoPath,
+                                                             Path outputDir,
+                                                             Path tokenPath,
+                                                             Consumer<String> lineHandler) {
         try {
             List<String> args = new ArrayList<>();
             args.add("--repo");
@@ -765,7 +878,8 @@ public class StringSniperComponentProvider extends ComponentProvider {
                     "python",
                     "extension_interface/agentic_compile.py",
                     args,
-                    0
+                    0,
+                    lineHandler
             );
             if (runResult == null) {
                 return new CompileExecutionResult(
@@ -893,6 +1007,28 @@ public class StringSniperComponentProvider extends ComponentProvider {
             this.outputDir = outputDir;
             this.binaries = binaries == null ? Collections.emptyList() : binaries;
             this.transcriptPath = transcriptPath == null ? "" : transcriptPath;
+        }
+    }
+
+    private static final class CompileProgressDialog {
+        final JDialog dialog;
+        final JProgressBar bar;
+        final JLabel statusLabel;
+
+        CompileProgressDialog(JDialog dialog, JProgressBar bar, JLabel statusLabel) {
+            this.dialog = dialog;
+            this.bar = bar;
+            this.statusLabel = statusLabel;
+        }
+    }
+
+    private static final class CompileProgressUpdate {
+        final int progress;
+        final String message;
+
+        CompileProgressUpdate(int progress, String message) {
+            this.progress = progress;
+            this.message = message == null ? "" : message;
         }
     }
 
