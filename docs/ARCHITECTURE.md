@@ -1,65 +1,74 @@
-# Architecture Overview
+﻿# Architecture Overview
 
-This document explains the mental model behind Ghidra String Sniper. The design is
-"Option B": Java owns all program analysis; Python owns LLM + internet work.
+This document describes the current runtime model of Ghidra String Sniper.
 
-## Diagram
+## Design summary
+
+The system is split by responsibility:
+
+- Java orchestrates Ghidra-side analysis, interesting-repo selection, cloning, UI population, and VT integration.
+- Python handles LLM + internet-facing analysis (ranking strings, Sourcegraph querying, function matching) and the sandboxed agentic compiler.
+
+## End-to-end flow
 
 ```
 Ghidra Program
      |
-     |  (Java) enumerate strings + addresses
+     | (Java) export strings + addresses
      v
-strings_raw.json  ------>  (Python) rank strings  ------>  results.json
-     |                                                   |
-     |  (Java) xrefs -> functions -> decomp              |
-     v                                                   |
-GSS_decomps/<hash>/decomp.txt                            |
-     |                                                   |
-     |  (Python) Sourcegraph + LLM function match        |
-     v                                                   v
-GSS_Results/<hash>/*  ----------------------------->  MATCHES.json
+strings_raw.json
      |
-     |  (Python) repo grab for strong multi-string hits
+     | (Python) rank strings
+     v
+results.json
+     |
+     | (Java) decompile xref functions per ranked string
+     v
+GSS_decomps/<hash>/decomp.txt
+     |
+     | (Python) Sourcegraph search + function matching
+     v
+GSS_Results/<hash>/*  -----> MATCHES.json
+     |
+     | (Java) aggregate strong multi-string repo hits
+     | (Java) clone interesting repos + write summary JSON
      v
 Interesting_repos/<repo>/
+Interesting_repos/interesting_repos.json
      |
-     |  (Python) compilation agent on downloaded repos
+     | (Java) populate UI tabs
      v
-Compiled_binaries/<repo>/
-     |
-     |  (Java) load results + matches
-     v
-UI (Strings + Results)
+UI (Strings + Results + Repos)
 ```
+
+## Repos tab actions
+
+After the main pipeline finishes, each row in `Repos` supports:
+
+- `Visit Repo`: open the GitHub repo URL.
+- `Auto Compile`: call Python `agentic_compile.py` and save outputs under
+  `compiled/<repo>/...`.
+- `Add to Version Tracking`: choose a compiled binary, import it into the Ghidra project, create a VT session, run auto correlators, and save results.
 
 ## Components
 
-- **Ghidra UI plugin (Java)**
-  - Extracts strings and addresses from the open `Program`.
-  - Decompiles functions that reference selected strings.
-  - Orchestrates Python phases and loads results into the UI.
+- `SearchForStringsAction` (Java)
+  - Owns pipeline orchestration and output directory lifecycle.
+  - Builds `interesting_repos.json` and clones repositories with `git clone`.
+  - Populates `Strings`, `Results`, and `Repos` tabs.
 
-- **Python backend**
-  - Ranks strings with heuristics + LLM (OpenRouter).
-  - Queries Sourcegraph for matching open-source code.
-  - Runs LLM-based function matching between decomp and source.
+- `StringSniperComponentProvider` (Java)
+  - Renders the tabs.
+  - Runs repo-row compile and version-tracking actions.
 
-- **External services**
-  - **OpenRouter** for LLM calls.
-  - **Sourcegraph** for code search.
+- Python entrypoints
+  - `extension_interface/rank_strings.py`
+  - `extension_interface/analyze_strings.py`
+  - `extension_interface/agentic_compile.py`
 
-## Data Flow (button click)
+## Run output layout
 
-1. Java exports all defined strings + addresses to `strings_raw.json`.
-2. Python ranks strings and writes `results.json`.
-3. Java decompiles functions that reference the ranked strings, writes `GSS_decomps/...`.
-4. Python queries Sourcegraph, writes `GSS_Results/...`, computes `MATCHES.json`, clones any repository that clears the post-match thresholds into `Interesting_repos/...`, then runs the compilation agent against those local repos and records outputs under `Compiled_repos/...`, `Compiled_binaries/...`, and `compilation_results.json`.
-5. Java loads `results.json` + `MATCHES.json` and populates the UI.
-
-## Where state lives
-
-Each run writes to a per-binary folder under the Ghidra project directory:
+Each run writes to:
 
 ```
 <project>/gss_runs/<binaryName>_<hash>/
@@ -70,11 +79,19 @@ Each run writes to a per-binary folder under the Ghidra project directory:
   GSS_decomps/<hash>/decomp.txt
   Interesting_repos/interesting_repos.json
   Interesting_repos/<repo>/
-  Compiled_repos/<repo>/manifest.json
-  Compiled_binaries/<repo>/*
-  compilation_results.json
+  compiled/<repo>/
+    agentic_compile.log
+    agentic_compile_result.json
+    agentic_compile_transcript.json
+    <copied binaries>
   pipeline.log
 ```
 
-Only the most recent run is kept (the folder is deleted and recreated each run).
-The OpenRouter token is stored at `<project>/gss_token.txt`.
+Token path:
+
+- `<project>/gss_token.txt`
+
+Note on VT artifacts:
+
+- VT and imported compiled programs are Ghidra project domain objects.
+- They are visible in the Ghidra Project UI (for example `/gss_compiled/...`), not as plain files inside `gss_runs`.

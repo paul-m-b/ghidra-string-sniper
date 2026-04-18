@@ -1,15 +1,16 @@
-# Pipeline Contract
+﻿# Pipeline Contract
 
-This document is the authoritative contract between the Java plugin and the Python backend.
-If any of these inputs/outputs change, update this file and the corresponding code.
+This document is the current contract between the Java plugin and Python scripts.
+If any input/output changes, update this file and implementation together.
 
-## Phases and Responsibilities
+## Pipeline phases and ownership
 
 1. **Java: export strings**
    - Input: open `Program`
    - Output: `strings_raw.json`
 
 2. **Python: rank strings (LLM + heuristics)**
+   - Script: `extension_interface/rank_strings.py`
    - Input: `strings_raw.json`
    - Output: `results.json`
 
@@ -17,15 +18,34 @@ If any of these inputs/outputs change, update this file and the corresponding co
    - Input: `results.json` + `Program`
    - Output: `GSS_decomps/<hash>/decomp.txt`
 
-4. **Python: Sourcegraph + function match + repo grab + compile**
+4. **Python: Sourcegraph + function match**
+   - Script: `extension_interface/analyze_strings.py`
    - Input: `results.json`, `GSS_decomps/<hash>/decomp.txt`
-   - Output: `GSS_Results/<hash>/*`, `MATCHES.json`, `Interesting_repos/*`, `Compiled_repos/*`, `Compiled_binaries/*`, `compilation_results.json`
+   - Output: `GSS_Results/<hash>/*`, `MATCHES.json`
 
-5. **Java: UI population**
-   - Input: `results.json`, `MATCHES.json`
-   - Output: Strings table and Results tab
+5. **Java: interesting repo aggregation + cloning**
+   - Input: `results.json`, `MATCHES.json`, `GSS_Results/*`
+   - Output: `Interesting_repos/<repo>/...`, `Interesting_repos/interesting_repos.json`
 
-## Output Directory Layout (GSS_OUT)
+6. **Java: UI population**
+   - Input: pipeline outputs above
+   - Output: `Strings`, `Results`, `Repos` tabs
+
+## Post-pipeline repo actions
+
+These actions are triggered from the `Repos` tab, not during the main pipeline.
+
+1. **Auto Compile (repo row)**
+   - Python script: `extension_interface/agentic_compile.py`
+   - Input: cloned repo path (`Interesting_repos/<repo>`)
+   - Output: `compiled/<repo>/agentic_compile*.json|.log` and copied binaries
+
+2. **Add to Version Tracking (repo row)**
+   - Java action in `StringSniperComponentProvider`
+   - Input: selected binary from `compiled/<repo>/...`
+   - Output: imported program under project path `/gss_compiled/<destination-program>/...` and a VT session file in the project root
+
+## Output directory layout (`GSS_OUT`)
 
 ```
 <project>/gss_runs/<binaryName>_<hash>/
@@ -36,17 +56,17 @@ If any of these inputs/outputs change, update this file and the corresponding co
   GSS_decomps/<hash>/decomp.txt
   Interesting_repos/interesting_repos.json
   Interesting_repos/<repo>/
-  Compiled_repos/<repo>/manifest.json
-  Compiled_binaries/<repo>/*
-  compilation_results.json
+  compiled/<repo>/
+    agentic_compile.log
+    agentic_compile_result.json
+    agentic_compile_transcript.json
+    <copied binaries>
   pipeline.log
 ```
 
-Only the latest run is kept for each binary.
+## JSON schemas
 
-## JSON Schemas
-
-### strings_raw.json (Java output)
+### `strings_raw.json` (Java output)
 
 ```json
 {
@@ -59,9 +79,9 @@ Only the latest run is kept for each binary.
 }
 ```
 
-### results.json (Python output)
+### `results.json` (Python output)
 
-Keys are the exact string values from `strings_raw.json`.
+Keys are exact string values from `strings_raw.json`.
 
 ```json
 {
@@ -78,9 +98,9 @@ Keys are the exact string values from `strings_raw.json`.
 }
 ```
 
-### MATCHES.json (Python output)
+### `MATCHES.json` (Python output)
 
-Keys are the hash values from `results.json`. Values are a pair:
+Keys are hash values from `results.json`. Values are:
 `[best_match_file_path, match_score]`.
 
 ```json
@@ -96,20 +116,45 @@ Keys are the hash values from `results.json`. Values are a pair:
 }
 ```
 
+### `Interesting_repos/interesting_repos.json` (Java output)
+
+Top-level keys are repo identifiers.
+
+```json
+{
+  "github.com/AaronKalair/C-Web-Server": {
+    "match_count": 9,
+    "average_match_score": 8.114,
+    "strong_hits": 9,
+    "result_confidences": [8, 8, 7, 7],
+    "hashes": ["..."],
+    "strings": ["..."],
+    "repo_url": "https://sourcegraph.com/github.com/AaronKalair/C-Web-Server",
+    "clone_url": "https://github.com/AaronKalair/C-Web-Server.git",
+    "clone": {
+      "status": "cloned",
+      "target_dir": ".../Interesting_repos/github.com__AaronKalair__C-Web-Server",
+      "clone_url": "https://github.com/AaronKalair/C-Web-Server.git"
+    }
+  }
+}
+```
+
 ## Invariants
 
-- Strings in `results.json` **must** be exact values from `strings_raw.json`.
-- Hashing **must** be computed from the canonical string values (no UI normalization).
-- All Python output must be written under `GSS_OUT` using `gss_paths.py`.
-- `MATCHES.json` must exist even if no matches were found.
-- `GSS_decomps/<hash>/decomp.txt` is optional per string; if missing, match score is `0.0`.
+- Strings in `results.json` must be exact values from `strings_raw.json`.
+- `MATCHES.json` must exist even when no matches are found.
+- `GSS_decomps/<hash>/decomp.txt` may be missing for strings with no resolvable xref decomp.
+- Interesting repos are selected by Java thresholds (`match score`, `confidence`, and multi-hit requirements).
+- `Auto Compile` and `Add to Version Tracking` require a successful pipeline run that populated the `Repos` tab.
 
-## Token Handling
+## Token handling
 
-- The OpenRouter token is stored at `<project>/gss_token.txt`.
-- Java passes this path to Python via `--token` (Python accepts file path or raw token).
+- OpenRouter token is stored at `<project>/gss_token.txt`.
+- Java passes token path to Python scripts via `--token`.
 
 ## Logging
 
-- Java and Python append to `pipeline.log` under the run output directory.
-- Java logs to the Ghidra Log window and Console.
+- Main pipeline logs: `pipeline.log` (Java + Python lines).
+- Per-repo compile logs: `compiled/<repo>/agentic_compile.log` and transcript/result JSON.
+- VT session creation/correlator results are reflected in Ghidra project objects and UI dialogs.

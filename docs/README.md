@@ -1,23 +1,10 @@
-# Documentation Index
+﻿# Documentation Index
 
-## Table of Contents
-
-- Architecture overview  
-  The mental model for how Java, Python, and external services cooperate.
-- Pipeline contract  
-  The authoritative I/O contract, JSON schemas, and invariants.
-- Development setup  
-  How to build the extension and run the pipeline locally.
-- Debugging and logs  
-  Where logs go and how to interpret pipeline failures.
-- UI behavior  
-  What each tab and column means, including score semantics.
-- Sourcegraph query behavior  
-  How query strings are escaped and formatted for reliable matches.
-
-## Quick Links
+## Quick links
 
 - [ARCHITECTURE](ARCHITECTURE.md)
+  - Runtime mental model, component responsibilities, and output locations.
 - [PIPELINE CONTRACT](PIPELINE_CONTRACT.md)
+  - Phase-by-phase Java/Python contract, schemas, invariants, and post-pipeline repo actions.
 - [SOURCEGRAPH SEARCH](SOURCEGRAPH_SEARCH.md)
-
+  - Search-string formatting and escaping behavior.
