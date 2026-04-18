@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -286,7 +287,7 @@ public class SearchForStringsAction extends DockingAction {
                                                 repoMatchMeta.cloneUrl
                                         )
                                 );
-                                agg.addHit(hash, matchScore, resultsScore);
+                                agg.addHit(hash, matchScore, resultsScore, extractedValue);
                                 if ((agg.repoUrl == null || agg.repoUrl.isBlank()) &&
                                         repoMatchMeta.repoUrl != null && !repoMatchMeta.repoUrl.isBlank()) {
                                     agg.repoUrl = repoMatchMeta.repoUrl;
@@ -309,6 +310,8 @@ public class SearchForStringsAction extends DockingAction {
                     Path summaryPath = writeInterestingReposSummary(outputDirFinal, interestingRepos, cloneResults);
                     InterestingReposAlert interestingReposAlert =
                             buildInterestingReposAlert(interestingRepos, cloneResults, summaryPath);
+                    List<StringSniperComponentProvider.RepoData> repoTabRows =
+                            buildRepoTabData(interestingRepos, cloneResults);
 
                     logLine(
                             logWriterRef.get(),
@@ -325,6 +328,7 @@ public class SearchForStringsAction extends DockingAction {
                             sscpFinal.addString(sd);
                         }
                         sscpFinal.applyDefaultSort();
+                        sscpFinal.setInterestingRepos(repoTabRows);
                         showInterestingReposAlert(sscpFinal.getComponent(), interestingReposAlert);
                     });
                     logLine(logWriterRef.get(), consoleService, "Pipeline completed.");
@@ -348,6 +352,7 @@ public class SearchForStringsAction extends DockingAction {
 
         sscpFinal.clearStrings();
         sscpFinal.clearResults();
+        sscpFinal.clearRepos();
         new TaskLauncher(task, sscpFinal.getComponent());
     }
 
@@ -664,6 +669,12 @@ public class SearchForStringsAction extends DockingAction {
             }
             repoObj.add("hashes", hashes);
 
+            JsonArray strings = new JsonArray();
+            for (String value : aggregate.strings) {
+                strings.add(value);
+            }
+            repoObj.add("strings", strings);
+
             if (aggregate.repoUrl == null || aggregate.repoUrl.isBlank()) {
                 repoObj.add("repo_url", JsonNull.INSTANCE);
             } else {
@@ -738,6 +749,42 @@ public class SearchForStringsAction extends DockingAction {
                 failedCount,
                 details
         );
+    }
+
+    private static List<StringSniperComponentProvider.RepoData> buildRepoTabData(
+            Map<String, RepoAggregate> interestingRepos,
+            Map<String, CloneExecutionResult> cloneResults) {
+        List<StringSniperComponentProvider.RepoData> rows = new ArrayList<>();
+        for (Map.Entry<String, RepoAggregate> entry : interestingRepos.entrySet()) {
+            String repoKey = entry.getKey();
+            RepoAggregate aggregate = entry.getValue();
+            CloneExecutionResult cloneResult = cloneResults.get(repoKey);
+            String cloneStatus = cloneResult == null ? "missing_result" : cloneResult.status;
+            String targetDir = cloneResult == null ? "" : cloneResult.targetDir;
+
+            rows.add(new StringSniperComponentProvider.RepoData(
+                    repoKey,
+                    toGitHubUrl(aggregate.cloneUrl),
+                    cloneStatus,
+                    targetDir,
+                    aggregate.count,
+                    aggregate.averageMatchScore(),
+                    aggregate.strongHits(),
+                    new ArrayList<>(aggregate.strings)
+            ));
+        }
+        return rows;
+    }
+
+    private static String toGitHubUrl(String cloneUrl) {
+        if (cloneUrl == null || cloneUrl.isBlank()) {
+            return "";
+        }
+        String out = cloneUrl.trim();
+        if (out.endsWith(".git")) {
+            out = out.substring(0, out.length() - 4);
+        }
+        return out;
     }
 
     private static void showInterestingReposAlert(Component parent, InterestingReposAlert alert) {
@@ -897,6 +944,7 @@ public class SearchForStringsAction extends DockingAction {
         float scoreSum;
         final List<Integer> resultConfidences = new ArrayList<>();
         final List<String> hashes = new ArrayList<>();
+        final Set<String> strings = new LinkedHashSet<>();
 
         RepoAggregate(String repoDisplayName, String repoUrl, String cloneUrl) {
             this.repoDisplayName = repoDisplayName;
@@ -906,11 +954,14 @@ public class SearchForStringsAction extends DockingAction {
             this.scoreSum = 0.0f;
         }
 
-        void addHit(String hash, float score, int resultConfidence) {
+        void addHit(String hash, float score, int resultConfidence, String stringValue) {
             count++;
             scoreSum += score;
             resultConfidences.add(resultConfidence);
             hashes.add(hash);
+            if (stringValue != null && !stringValue.isBlank()) {
+                strings.add(stringValue);
+            }
         }
 
         float averageMatchScore() {

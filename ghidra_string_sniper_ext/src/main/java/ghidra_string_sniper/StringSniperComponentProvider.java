@@ -31,6 +31,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private JTabbedPane tabbedPane;
     private JTable stringsTable;
     private JPanel resultsPanel;
+    private JPanel reposPanel;
     private Path lastOutputDir;
 
     public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
@@ -63,6 +64,13 @@ public class StringSniperComponentProvider extends ComponentProvider {
         resultsPanel.removeAll();
         resultsPanel.revalidate();
         resultsPanel.repaint();
+    }
+
+    public void clearRepos() {
+        reposPanel.removeAll();
+        reposPanel.add(new JLabel("No interesting repositories found yet."));
+        reposPanel.revalidate();
+        reposPanel.repaint();
     }
 
     public void setProgram(Program program) {
@@ -222,6 +230,22 @@ public class StringSniperComponentProvider extends ComponentProvider {
         resultsPanel.add(accordionPanel);
     }
 
+    public void setInterestingRepos(List<RepoData> repos) {
+        reposPanel.removeAll();
+        if (repos == null || repos.isEmpty()) {
+            reposPanel.add(new JLabel("No interesting repositories found."));
+            reposPanel.revalidate();
+            reposPanel.repaint();
+            return;
+        }
+
+        for (RepoData repo : repos) {
+            reposPanel.add(createRepoRow(repo));
+        }
+        reposPanel.revalidate();
+        reposPanel.repaint();
+    }
+
     private void filterStrings(String query) {
         stringsTableModel.filter(query);
     }
@@ -292,6 +316,12 @@ public class StringSniperComponentProvider extends ComponentProvider {
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
         tabbedPane.addTab("Results", resultsPanel);
+
+        reposPanel = new JPanel();
+        reposPanel.setLayout(new BoxLayout(reposPanel, BoxLayout.Y_AXIS));
+        reposPanel.add(new JLabel("No interesting repositories found yet."));
+        JScrollPane reposScroll = new JScrollPane(reposPanel);
+        tabbedPane.addTab("Repos", reposScroll);
     }
 
     @Override
@@ -524,5 +554,105 @@ public class StringSniperComponentProvider extends ComponentProvider {
             return "https://sourcegraph.com" + trimmed;
         }
         return trimmed;
+    }
+
+    private JPanel createRepoRow(RepoData repo) {
+        JPanel row = new JPanel();
+        row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
+        row.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(220, 220, 220)),
+                BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        ));
+
+        JLabel name = new JLabel("Repo: " + repo.repoName);
+        name.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(name);
+
+        JLabel stats = new JLabel(
+                "Matches: " + repo.matchCount +
+                        ", Strong Hits: " + repo.strongHits +
+                        ", Avg Match Score: " + String.format("%.2f", repo.averageMatchScore)
+        );
+        stats.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(stats);
+
+        JLabel status = new JLabel("Clone Status: " + repo.cloneStatus);
+        status.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(status);
+
+        if (repo.targetDir != null && !repo.targetDir.isBlank()) {
+            JLabel dir = new JLabel("Local Path: " + repo.targetDir);
+            dir.setAlignmentX(Component.LEFT_ALIGNMENT);
+            row.add(dir);
+        }
+
+        JTextArea stringsArea = new JTextArea(String.join(System.lineSeparator(), repo.strings));
+        stringsArea.setEditable(false);
+        stringsArea.setLineWrap(true);
+        stringsArea.setWrapStyleWord(true);
+        stringsArea.setRows(Math.min(Math.max(repo.strings.size(), 2), 8));
+        JScrollPane stringsScroll = new JScrollPane(stringsArea);
+        stringsScroll.setPreferredSize(new Dimension(700, 100));
+        stringsScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(new JLabel("Strings:"));
+        row.add(stringsScroll);
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
+        buttons.setOpaque(false);
+
+        JButton visitRepo = new JButton("Visit Repo");
+        visitRepo.setEnabled(repo.githubUrl != null && !repo.githubUrl.isBlank());
+        visitRepo.addActionListener(e -> {
+            if (repo.githubUrl == null || repo.githubUrl.isBlank()) {
+                return;
+            }
+            try {
+                Desktop.getDesktop().browse(new URI(repo.githubUrl));
+            } catch (Exception ex) {
+                Msg.showError(StringSniperComponentProvider.this, null,
+                        "Failed to open URL", ex.getMessage(), ex);
+            }
+        });
+        buttons.add(visitRepo);
+
+        JButton autoCompile = new JButton("Auto Compile");
+        autoCompile.addActionListener(e -> {
+            // intentionally no-op for now
+        });
+        buttons.add(autoCompile);
+
+        row.add(Box.createVerticalStrut(4));
+        row.add(buttons);
+        return row;
+    }
+
+    public static final class RepoData {
+        public final String repoName;
+        public final String githubUrl;
+        public final String cloneStatus;
+        public final String targetDir;
+        public final int matchCount;
+        public final double averageMatchScore;
+        public final int strongHits;
+        public final List<String> strings;
+
+        public RepoData(String repoName,
+                        String githubUrl,
+                        String cloneStatus,
+                        String targetDir,
+                        int matchCount,
+                        double averageMatchScore,
+                        int strongHits,
+                        List<String> strings) {
+            this.repoName = repoName;
+            this.githubUrl = githubUrl;
+            this.cloneStatus = cloneStatus;
+            this.targetDir = targetDir;
+            this.matchCount = matchCount;
+            this.averageMatchScore = averageMatchScore;
+            this.strongHits = strongHits;
+            this.strings = strings == null ? Collections.emptyList() : new ArrayList<>(strings);
+        }
     }
 }
