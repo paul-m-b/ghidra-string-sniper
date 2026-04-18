@@ -13,6 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import docking.ComponentProvider;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.framework.model.Project;
@@ -33,6 +36,7 @@ public class StringSniperComponentProvider extends ComponentProvider {
     private JPanel resultsPanel;
     private JPanel reposPanel;
     private Path lastOutputDir;
+    private static final String AGENTIC_RESULT_MARKER = "GSS_AGENTIC_RESULT_JSON=";
 
     public StringSniperComponentProvider(StringSniperPlugin plugin, PluginTool tool, String owner) {
         super(tool, "Ghidra String Sniper Provider", owner);
@@ -617,14 +621,279 @@ public class StringSniperComponentProvider extends ComponentProvider {
         buttons.add(visitRepo);
 
         JButton autoCompile = new JButton("Auto Compile");
-        autoCompile.addActionListener(e -> {
-            // intentionally no-op for now
-        });
+        autoCompile.addActionListener(e -> runAutoCompile(repo, row, autoCompile));
         buttons.add(autoCompile);
 
         row.add(Box.createVerticalStrut(4));
         row.add(buttons);
         return row;
+    }
+
+    private void runAutoCompile(RepoData repo, Component parent, JButton button) {
+        if (repo == null || repo.targetDir == null || repo.targetDir.isBlank()) {
+            JOptionPane.showMessageDialog(parent, "No local repository path available for this row.",
+                    "Compile Unavailable", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Path repoPath;
+        try {
+            repoPath = Path.of(repo.targetDir);
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(parent, "Invalid repository path: " + repo.targetDir,
+                    "Compile Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (!Files.isDirectory(repoPath)) {
+            JOptionPane.showMessageDialog(parent, "Repository directory does not exist:\n" + repoPath,
+                    "Compile Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        Path runDir = lastOutputDir;
+        if (runDir == null || !Files.isDirectory(runDir)) {
+            JOptionPane.showMessageDialog(parent, "Run output directory is unavailable for this session.",
+                    "Compile Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        Path tokenPath = ensureOpenRouterToken(parent);
+        if (tokenPath == null || !Files.isRegularFile(tokenPath)) {
+            return;
+        }
+
+        Path compiledDir = runDir.resolve("compiled").resolve(sanitizePathSegment(repo.repoName));
+        final String originalText = button.getText();
+        button.setEnabled(false);
+        button.setText("Compiling...");
+
+        SwingWorker<CompileExecutionResult, Void> worker = new SwingWorker<>() {
+            @Override
+            protected CompileExecutionResult doInBackground() {
+                try {
+                    clearDirectory(compiledDir);
+                    Files.createDirectories(compiledDir);
+                    return runAgenticCompiler(repoPath, compiledDir, tokenPath);
+                } catch (IOException ioe) {
+                    return new CompileExecutionResult(false, ioe.getMessage(), compiledDir, Collections.emptyList(), "");
+                }
+            }
+
+            @Override
+            protected void done() {
+                button.setEnabled(true);
+                button.setText(originalText);
+                try {
+                    CompileExecutionResult result = get();
+                    if (result.success) {
+                        String binariesSummary = result.binaries.isEmpty()
+                                ? "(No binary list reported)"
+                                : String.join(System.lineSeparator(), result.binaries);
+                        JOptionPane.showMessageDialog(parent,
+                                "Compilation succeeded.\nOutput directory:\n" + result.outputDir +
+                                        "\n\nBinaries:\n" + binariesSummary,
+                                "Compile Success",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        Msg.showError(StringSniperComponentProvider.this, null,
+                                "Compile Failed",
+                                "Agentic sandbox compile failed.\n\n" + result.logOutput);
+                    }
+                } catch (Exception ex) {
+                    Msg.showError(StringSniperComponentProvider.this, null,
+                            "Compile Failed", ex.getMessage(), ex);
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private Path ensureOpenRouterToken(Component parent) {
+        Path projectDir = getProjectDir();
+        if (projectDir == null) {
+            JOptionPane.showMessageDialog(parent, "No project directory found.", "Token Error", JOptionPane.ERROR_MESSAGE);
+            return null;
+        }
+        Path tokenPath = projectDir.resolve("gss_token.txt");
+        if (Files.exists(tokenPath)) {
+            try {
+                String token = Files.readString(tokenPath, StandardCharsets.UTF_8).trim();
+                if (!token.isBlank()) {
+                    return tokenPath;
+                }
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(parent, "Failed to read token file: " + e.getMessage(),
+                        "Token Error", JOptionPane.ERROR_MESSAGE);
+                return null;
+            }
+        }
+
+        String tokenValue = JOptionPane.showInputDialog(
+                parent,
+                "OpenRouter API key is required for agentic compile. Enter key:",
+                "OpenRouter Token",
+                JOptionPane.PLAIN_MESSAGE
+        );
+        if (tokenValue == null || tokenValue.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(parent, "Missing API key. Compile cancelled.",
+                    "Token Required", JOptionPane.WARNING_MESSAGE);
+            return null;
+        }
+        try {
+            Files.writeString(tokenPath, tokenValue.trim(), StandardCharsets.UTF_8);
+            return tokenPath;
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(parent, "Failed to save API key: " + e.getMessage(),
+                    "Token Error", JOptionPane.ERROR_MESSAGE);
+            return null;
+        }
+    }
+
+    private static CompileExecutionResult runAgenticCompiler(Path repoPath, Path outputDir, Path tokenPath) {
+        try {
+            List<String> args = new ArrayList<>();
+            args.add("--repo");
+            args.add(repoPath.toString());
+            args.add("--out");
+            args.add(outputDir.toString());
+            if (tokenPath != null && Files.isRegularFile(tokenPath)) {
+                args.add("--token");
+                args.add(tokenPath.toString());
+            }
+
+            PythonRunner.RunResult runResult = PythonRunner.runSystemPython(
+                    "python",
+                    "extension_interface/agentic_compile.py",
+                    args,
+                    0
+            );
+            if (runResult == null) {
+                return new CompileExecutionResult(
+                        false,
+                        "Agentic compile timed out or failed to launch.",
+                        outputDir,
+                        Collections.emptyList(),
+                        ""
+                );
+            }
+            CompileExecutionResult parsed = parseAgenticCompileResult(runResult.stdout, outputDir);
+            if (parsed == null) {
+                String combined = "Agentic compiler did not return parsable result.\n\n" + runResult.stdout;
+                return new CompileExecutionResult(false, combined, outputDir, Collections.emptyList(), "");
+            }
+            if (runResult.exitCode != 0 && parsed.success) {
+                String combined = "Agentic compiler exited non-zero despite success payload.\n\n" + runResult.stdout;
+                return new CompileExecutionResult(false, combined, outputDir, parsed.binaries, parsed.transcriptPath);
+            }
+            if (runResult.exitCode != 0 && !parsed.success && !runResult.stdout.isBlank()) {
+                return new CompileExecutionResult(
+                        false,
+                        parsed.logOutput + "\n\n--- Agent Output ---\n" + runResult.stdout,
+                        outputDir,
+                        parsed.binaries,
+                        parsed.transcriptPath
+                );
+            }
+            return parsed;
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return new CompileExecutionResult(false, e.getMessage(), outputDir, Collections.emptyList(), "");
+        }
+    }
+
+    private static CompileExecutionResult parseAgenticCompileResult(String stdout, Path defaultOutputDir) {
+        if (stdout == null || stdout.isBlank()) {
+            return null;
+        }
+        String payload = null;
+        String[] lines = stdout.split("\\R");
+        for (String line : lines) {
+            if (line.startsWith(AGENTIC_RESULT_MARKER)) {
+                payload = line.substring(AGENTIC_RESULT_MARKER.length()).trim();
+            }
+        }
+        if (payload == null || payload.isBlank()) {
+            return null;
+        }
+        try {
+            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+            boolean success = obj.has("success") && obj.get("success").getAsBoolean();
+            String message = obj.has("message") ? obj.get("message").getAsString() : "";
+            Path outputDir = defaultOutputDir;
+            if (obj.has("output_dir") && !obj.get("output_dir").isJsonNull()) {
+                try {
+                    outputDir = Path.of(obj.get("output_dir").getAsString());
+                } catch (RuntimeException ignored) {
+                }
+            }
+
+            String transcriptPath = "";
+            if (obj.has("transcript_path") && !obj.get("transcript_path").isJsonNull()) {
+                transcriptPath = obj.get("transcript_path").getAsString();
+            }
+
+            List<String> binaries = new ArrayList<>();
+            if (obj.has("binaries") && obj.get("binaries").isJsonArray()) {
+                JsonArray arr = obj.getAsJsonArray("binaries");
+                for (int i = 0; i < arr.size(); i++) {
+                    if (!arr.get(i).isJsonNull()) {
+                        binaries.add(arr.get(i).getAsString());
+                    }
+                }
+            }
+            return new CompileExecutionResult(success, message, outputDir, binaries, transcriptPath);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String sanitizePathSegment(String value) {
+        if (value == null || value.isBlank()) {
+            return "repo";
+        }
+        return value.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    private static void clearDirectory(Path dir) throws IOException {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (var walk = Files.walk(dir)) {
+            walk.sorted((a, b) -> b.compareTo(a)).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof IOException) {
+                throw (IOException) e.getCause();
+            }
+            throw e;
+        }
+    }
+
+    private static final class CompileExecutionResult {
+        final boolean success;
+        final String logOutput;
+        final Path outputDir;
+        final List<String> binaries;
+        final String transcriptPath;
+
+        CompileExecutionResult(boolean success,
+                               String logOutput,
+                               Path outputDir,
+                               List<String> binaries,
+                               String transcriptPath) {
+            this.success = success;
+            this.logOutput = logOutput;
+            this.outputDir = outputDir;
+            this.binaries = binaries == null ? Collections.emptyList() : binaries;
+            this.transcriptPath = transcriptPath == null ? "" : transcriptPath;
+        }
     }
 
     public static final class RepoData {
