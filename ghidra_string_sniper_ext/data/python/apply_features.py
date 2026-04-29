@@ -577,6 +577,59 @@ class FEATURE_APPLIER:
         if not extractions_path.exists():
             print(f"Error: Directory {extractions_dir} does not exist")
             return
+        
+        # Find all JSON files matching pattern in immediate subdirectories
+        # This will find: GSS_Results/*/EXTRACTIONS.json
+        json_files = list(extractions_path.glob(f"*/{pattern}"))
+        
+        # Also look for JSON files with the pattern in the filename
+        # e.g., EXTRACTIONS_52f555f6.json
+        json_files.extend(list(extractions_path.glob(f"{pattern}_*")))
+        
+        # Remove duplicates if any
+        json_files = list(set(json_files))
+        
+        if not json_files:
+            print(f"No {pattern} files found in subdirectories of {extractions_dir}")
+            
+            # Also check for any JSON files that might be extraction results
+            any_json = list(extractions_path.glob("*.json"))
+            if any_json:
+                print(f"Found {len(any_json)} JSON files in root directory.")
+                print("Please specify the correct pattern or move files to hash subdirectories.")
+                for jf in any_json[:5]:  # Show first 5
+                    print(f"  - {jf.name}")
+                if len(any_json) > 5:
+                    print(f"  ... and {len(any_json) - 5} more")
+            return
+        
+        print(f"Found {len(json_files)} extraction files")
+        
+        # Group by hash or just sort by filename
+        results = []
+        
+        for i, json_file in enumerate(json_files, 1):
+            # Try to extract hash from directory name or filename
+            hash_dir = json_file.parent.name
+            if hash_dir == str(extractions_path.name) or hash_dir == '.':
+                # If file is directly in the root, try to extract hash from filename
+                hash_dir = json_file.stem.replace(pattern.replace('.json', ''), '').strip('_')
+                if not hash_dir:
+                    hash_dir = f"file_{i}"
+            
+            print("\n" + "="*60)
+            print(f"[{i}/{len(json_files)}] Processing: {hash_dir}")
+            print(f"File: {json_file}")
+            print("="*60)
+            
+            try:
+                self.apply_changes_from_file(str(json_file))
+                results.append((hash_dir, True, None))
+            except Exception as e:
+                print(f"Error processing {hash_dir}: {e}")
+                import traceback
+                traceback.print_exc()
+                results.append((hash_dir, False, str(e)))
 
 def main():
     """
