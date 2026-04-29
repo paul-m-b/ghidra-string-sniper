@@ -442,13 +442,12 @@ class FEATURE_APPLIER:
         
         function = self.find_function(old_info['name'])
         if not function:
-            print(f"Function {old_info['name']} not found")
+            print(f"    - Function {old_info['name']} not found")
             return False
         
         # Rename function if needed
         if old_info['name'] != new_info['name']:
             self.apply_rename(old_info['name'], old_info['name'], new_info['name'])
-            # Refresh function reference with new name
             function = self.find_function(new_info['name'])
 
             try:
@@ -467,75 +466,60 @@ class FEATURE_APPLIER:
                 print(f"    - Error applying signature: {e}")
                 return False
 
-        # Updating a function signature requires redefining it
-        new_signature = parser.parse(None, new_sig) 
-        if new_signature is None:
-            print("Failed to parse the function signature string.")
-
-        # Apply new sig, requires getting the func address
-        func_addr = self.get_function_address(new_info['name'])
-        cmd = ApplyFunctionSignatureCmd(func_addr, new_signature, SourceType.USER_DEFINED)
-        runCommand(cmd)
-
-        return True
-
-    def apply_changes(self, func_name: str, features_file: str):
+    def apply_changes_from_file(self, features_file: str):
         """
-        Apply all feature changes from an EXTRACTIONS.txt file
+        Apply all feature changes from a JSON features file
         """
-        print(f"\nApplying features for function: {func_name}")
+        print(f"\nApplying features from: {features_file}")
         print("-" * 50)
         
         try:
             with open(features_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
+                features = json.load(f)
         except Exception as e:
             print(f"Error reading features file: {e}")
             return
         
-        for line in lines:
-            line = line.strip()
-            if not line or '-->' not in line:
-                continue
-            
-            parsed = self.parse_feature_line(line)
-            if not parsed:
-                continue
-            
-            original = parsed['original']
-            proposed = parsed['proposed']
-            change_types = parsed['change_types']
-            
-            print(f"\nProcessing: {line}")
-            
-            # Determine what kind of change this is
-            if 'function signature' in change_types:
-                # Full function signature change
-                self.apply_function_signature(original, proposed)
-            
-            elif 'rename' in change_types and 'retype' in change_types:
-                # Both rename and retype on a variable
-                old_name, old_type = self.extract_var_info(original)
-                new_name, new_type = self.extract_var_info(proposed)
-                
-                if old_name and new_name:
-                    self.apply_rename(func_name, old_name, new_name)
-                if old_type and new_type:
-                    self.apply_retype(func_name, new_name if new_name else old_name, new_type)
-            
-            elif 'rename' in change_types:
-                # Just rename
-                old_name, _ = self.extract_var_info(original)
-                new_name, _ = self.extract_var_info(proposed)
-                if old_name and new_name:
-                    self.apply_rename(func_name, old_name, new_name)
-            
-            elif 'retype' in change_types:
-                # Just retype
-                var_name, _ = self.extract_var_info(original)
-                _, new_type = self.extract_var_info(proposed)
-                if var_name and new_type:
-                    self.apply_retype(func_name, var_name, new_type)
+        # Get the function name from the features
+        function_name = features.get('function_name')
+        
+        if not function_name:
+            print("Error: No function_name found in EXTRACTIONS.json file")
+            return
+        
+        print(f"Target function: {function_name}")
+        
+        # Apply function signature change if present
+        if 'function_signature' in features:
+            sig = features['function_signature']
+            if sig.get('original') and sig.get('proposed'):
+                print(f"\nApplying function signature change...")
+                if self.apply_function_signature(sig['original'], sig['proposed']) == False:
+                    print ("    - Adding function signature comment")
+                    addr = self.get_function_address(function_name)
+                    comment = "GSS failed to apply: "+sig['proposed']
+
+                    tx_id = self.current_program.startTransaction("Add Comment")
+
+                    try:
+                        cu = self.current_program.getListing().getCodeUnitAt(addr)
+                        
+                        if cu:
+                            cu.setComment(CodeUnit.PRE_COMMENT, comment)
+                            print("    - Comment added successfully at {}".format(addr))
+                        else:
+                            print("    - No code unit found at {}".format(addr))
+                            
+                        self.current_program.endTransaction(tx_id, True)
+                    except:
+                        self.current_program.endTransaction(tx_id, False)
+                        print("    - Error adding comment: {}".format(e))
+
+
+        
+        # Apply variable changes
+        if features.get('variables'):
+            print(f"\nApplying variable changes ({len(features['variables'])} variables)...")
 
 def main():
     """
