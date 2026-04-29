@@ -180,6 +180,27 @@ class FEATURE_APPLIER:
         high_function = decompiled_func.getHighFunction()
         if not high_function:
             return False
+        
+         # Get local variables
+        local_symbol_map = high_function.getLocalSymbolMap()
+        
+        # Find variable by name
+        for symbol in local_symbol_map.getSymbols():
+            if symbol.getName() == old_name:
+                HighFunctionDBUtil.updateDBVariable(symbol, new_name, None, SourceType.USER_DEFINED)
+                print(f"    - Renamed pcode variable {old_name} -> {new_name} in {func_name}")
+                return True
+        
+        # Also check parameters
+        param_symbol_map = high_function.getParamSymbolMap()
+        for symbol in param_symbol_map.getSymbols():
+            if symbol.getName() == old_name:
+                symbol.setName(new_name, SourceType.USER_DEFINED)
+                print(f"Renamed parameter {old_name} -> {new_name} in {function.getName()}")
+                return True
+    
+        print(f"    - Variable {old_name} not found in pcode representation")
+        return False
 
     def apply_retype(self, func_name: str, var_name: str, new_type: str):
         """Apply variable/parameter retype operation"""
@@ -187,29 +208,29 @@ class FEATURE_APPLIER:
         dtm = self.current_program.getDataTypeManager()
         function = self.find_function(func_name)
         if not function:
-            print(f"Function {func_name} not found")
+            print(f"    - Function {func_name} not found")
             return False
+        
+        # Ensure the type exists before attempting to apply
+        data_type = self.ensure_data_type_exists(new_type)
+        if data_type is None:
+            print(f"    - Warning: Could not resolve type '{new_type}' for '{var_name}', skipping")
         
         # Check if it's a return type
         if var_name == "return":
             # This is a function return type change
-            function.setReturnType(dtm.getDataType("/"+new_type), SourceType.USER_DEFINED)
-            print(f"Return type change to {new_type} for {func_name} - not sure how to do that yet lmao")
-            return False
+            function.setReturnType(data_type, SourceType.USER_DEFINED)
+            print(f"    - Changed return type to {new_type} for {func_name}")
+            return True
         
         var = self.find_variable_in_function(function, var_name)
         if var:
-            # Get the data type from the new type string
-            data_type = self.get_data_type(new_type)
-            if data_type:
-                var.setDataType(data_type, SourceType.USER_DEFINED)
-                print(f"Retyped {var_name} -> {new_type} in function {func_name}")
-                return True
+            var.setDataType(data_type, SourceType.USER_DEFINED)
+            print(f"    - Retyped {var_name} -> {new_type} in function {func_name}")
+            return True
         else:
             print(f"Variable {var_name} not found in function {func_name}")
             return False
-        
-        return False
 
     def get_data_type(self, type_str: str):
         """Convert type string to Ghidra data type"""
@@ -252,6 +273,28 @@ class FEATURE_APPLIER:
                     break
 
         return func_addr
+    
+    def ensure_data_type_exists(self, type_str: str):
+        """
+        Create missing data type if it doesn't exist.
+        Returns the DataType object or None if creation fails.
+        """
+        
+        # Clean the type string
+        type_str = type_str.strip()
+        is_pointer = type_str.endswith('*')
+        base_type = type_str[:-1].strip() if is_pointer else type_str
+        
+        # List of known Ghidra base types to avoid recreating
+        known_base_types = {
+            'void', 'char', 'short', 'int', 'long', 'long long',
+            'float', 'double', 'size_t', 'ssize_t', 'uint8_t', 'uint16_t',
+            'uint32_t', 'uint64_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t',
+            'uchar', 'ushort', 'uint', 'ulong', 'ulonglong',
+            'bool', '_Bool', 'wchar_t', 'char16_t', 'char32_t',
+            'undefined', 'undefined1', 'undefined2', 'undefined4', 'undefined8',
+            'FILE', 'fpos_t', 'time_t', 'off_t'
+        }
 
 
     def apply_function_signature(self, old_sig: str, new_sig: str):
