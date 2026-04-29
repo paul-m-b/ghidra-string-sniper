@@ -24,7 +24,8 @@ from ghidra.program.model.listing import CodeUnit
 from ghidra.program.model.data import StructureDataType, DataTypeConflictHandler, CategoryPath
 from ghidra.program.model.data import PointerDataType
 
-def __init__(self, log_dir=None):
+class FeatureLogger:
+    def __init__(self, log_dir=None):
         if log_dir is None:
             script_path = Path(__file__).parent if '__file__' in globals() else Path.cwd()
             log_dir = script_path / "GSS_Logs"
@@ -74,7 +75,50 @@ def __init__(self, log_dir=None):
             'pcode_renames': {'attempted': 0, 'successful': 0, 'failed': 0},
             'errors': []
         }
+
+        elf.logger.info("="*80)
+        self.logger.info(f"GSS Feature Applier Session Started: {self.session_timestamp}")
+        self.logger.info(f"Log Directory: {self.log_dir}")
+        self.logger.info("="*80)
         
+    def log_rename_attempt(self, function_name, old_name, new_name, success, details=None):
+        """Log rename operation"""
+        self.stats['renames']['attempted'] += 1
+        if success:
+            self.stats['renames']['successful'] += 1
+            self.logger.info(f"RENAME SUCCESS: {function_name} - {old_name} -> {new_name}")
+        else:
+            self.stats['renames']['failed'] += 1
+            error_msg = f"RENAME FAILED: {function_name} - {old_name} -> {new_name}"
+            if details:
+                error_msg += f" - {details}"
+            self.logger.error(error_msg)
+            
+    def log_pcode_rename_attempt(self, function_name, old_name, new_name, success, details=None):
+        """Log pcode rename operation"""
+        self.stats['pcode_renames']['attempted'] += 1
+        if success:
+            self.stats['pcode_renames']['successful'] += 1
+            self.logger.info(f"PCODE RENAME SUCCESS: {function_name} - {old_name} -> {new_name}")
+        else:
+            self.stats['pcode_renames']['failed'] += 1
+            error_msg = f"PCODE RENAME FAILED: {function_name} - {old_name} -> {new_name}"
+            if details:
+                error_msg += f" - {details}"
+            self.logger.error(error_msg)
+            
+    def log_retype_attempt(self, function_name, var_name, old_type, new_type, success, details=None):
+        """Log retype operation"""
+        self.stats['retypes']['attempted'] += 1
+        if success:
+            self.stats['retypes']['successful'] += 1
+            self.logger.info(f"RETYPE SUCCESS: {function_name} - {var_name}: {old_type} -> {new_type}")
+        else:
+            self.stats['retypes']['failed'] += 1
+            error_msg = f"RETYPE FAILED: {function_name} - {var_name}: {old_type} -> {new_type}"
+            if details:
+                error_msg += f" - {details}"
+            self.logger.error(error_msg)
 
 class FEATURE_APPLIER:
     def __init__(self):
