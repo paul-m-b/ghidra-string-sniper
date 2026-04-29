@@ -145,18 +145,19 @@ class FEATURE_APPLIER:
         # Check if it's a function rename
         if old_name == func_name:
             function.setName(new_name, SourceType.USER_DEFINED)
-            print(f"Renamed function {old_name} -> {new_name}")
+            print(f"    - Renamed function {old_name} -> {new_name}")
             return True
         
         # Otherwise it's a variable rename
         var = self.find_variable_in_function(function, old_name)
         if var:
             var.setName(new_name, SourceType.USER_DEFINED)
-            print(f"Renamed {old_name} -> {new_name} in function {func_name}")
+            print(f"    - Renamed {old_name} -> {new_name} in function {func_name}")
             return True
         else:
-            print(f"Variable {old_name} not found in function {func_name}")
-            return False
+            print(f"    - Variable {old_name} not found in function {func_name}")
+        return False
+        
         
     def apply_rename_at_pcode_level(self, func_name: str, old_name: str, new_name: str):
         """Rename variables at the pcode level, which works for decompiler-generated variables"""
@@ -181,7 +182,7 @@ class FEATURE_APPLIER:
         if not high_function:
             return False
         
-         # Get local variables
+        # Get local variables
         local_symbol_map = high_function.getLocalSymbolMap()
         
         # Find variable by name
@@ -192,20 +193,19 @@ class FEATURE_APPLIER:
                 return True
         
         # Also check parameters
-        param_symbol_map = high_function.getParamSymbolMap()
-        for symbol in param_symbol_map.getSymbols():
-            if symbol.getName() == old_name:
-                symbol.setName(new_name, SourceType.USER_DEFINED)
-                print(f"Renamed parameter {old_name} -> {new_name} in {function.getName()}")
-                return True
+        #param_symbol_map = high_function.getParamSymbolMap()
+        #for symbol in param_symbol_map.getSymbols():
+        #    if symbol.getName() == old_name:
+        #        symbol.setName(new_name, SourceType.USER_DEFINED)
+        #        print(f"Renamed parameter {old_name} -> {new_name} in {function.getName()}")
+        #        return True
     
         print(f"    - Variable {old_name} not found in pcode representation")
         return False
 
     def apply_retype(self, func_name: str, var_name: str, new_type: str):
         """Apply variable/parameter retype operation"""
-
-        dtm = self.current_program.getDataTypeManager()
+        
         function = self.find_function(func_name)
         if not function:
             print(f"    - Function {func_name} not found")
@@ -215,10 +215,10 @@ class FEATURE_APPLIER:
         data_type = self.ensure_data_type_exists(new_type)
         if data_type is None:
             print(f"    - Warning: Could not resolve type '{new_type}' for '{var_name}', skipping")
+            return False
         
         # Check if it's a return type
         if var_name == "return":
-            # This is a function return type change
             function.setReturnType(data_type, SourceType.USER_DEFINED)
             print(f"    - Changed return type to {new_type} for {func_name}")
             return True
@@ -229,13 +229,11 @@ class FEATURE_APPLIER:
             print(f"    - Retyped {var_name} -> {new_type} in function {func_name}")
             return True
         else:
-            print(f"Variable {var_name} not found in function {func_name}")
+            print(f"    - Variable {var_name} not found in function {func_name}")
             return False
 
     def get_data_type(self, type_str: str):
         """Convert type string to Ghidra data type"""
-        dtm = self.current_program.getDataTypeManager()
-        
         # Handle common types
         type_mappings = {
             'int': 'int',
@@ -254,18 +252,18 @@ class FEATURE_APPLIER:
         }
         
         gh_type = type_mappings.get(type_str, type_str)
-        return dtm.findDataType(f"/{gh_type}")
+        return self.dtm.findDataType(f"/{gh_type}")
     
     def get_function_address(self, func_name: str):
         """Get function address by its name"""
 
-        functionManager = self.current_program.getFunctionManager()
+        func_addr = None
         symbolTable = self.current_program.getSymbolTable()
 
         symbols = list(symbolTable.getSymbols(func_name))
 
         if not symbols:
-            print (f"Function {func_name} not found")
+            print (f"    - Function {func_name} not found")
         else:
             for symbol in symbols:
                 if symbol.getSymbolType() == SymbolType.FUNCTION:
@@ -296,6 +294,61 @@ class FEATURE_APPLIER:
             'FILE', 'fpos_t', 'time_t', 'off_t'
         }
 
+        # Check if this is a known base type
+        if base_type in known_base_types:
+            # For pointer types, we need to ensure the base type exists
+            data_type = self.dtm.findDataType(f"/{base_type}")
+            if data_type and is_pointer:
+                return self.dtm.getPointer(data_type)
+            return data_type
+        
+        # Try to find existing type in program (search globally)
+        data_type = self.dtm.findDataType(type_str)
+        if data_type:
+            return data_type
+        
+        # For pointer types, try to find/create the base type
+        if is_pointer:
+            base_dt = self.ensure_data_type_exists(base_type)
+            if base_dt:
+                return self.dtm.getPointer(base_dt)
+            return None
+        
+        # Check if it's a primitive type with different name
+        common_variations = {
+            'uint32': 'uint32_t',
+            'uint64': 'uint64_t',
+            'int32': 'int32_t',
+            'int64': 'int64_t',
+        }
+        
+        if base_type in common_variations:
+            mapped_type = common_variations[base_type]
+            if mapped_type in known_base_types:
+                return self.dtm.findDataType(f"/{mapped_type}")
+        
+        # If we get here, it's a custom type that needs to be created
+        # Create category path for custom types
+        category_path = CategoryPath("/GSS_CustomTypes")
+        
+        # Check if type already exists under custom category
+        existing_type = self.dtm.findDataType(f"{category_path}/{type_str}")
+        if existing_type:
+            return existing_type
+        
+        # Create a stub structure for the unknown type
+        print(f"    - Creating stub structure for custom type: {type_str}")
+        
+        try:
+            # Ensure category exists by getting or creating it
+            category = self.dtm.getCategory(category_path)
+            if category is None:
+                category = self.dtm.createCategory(category_path)
+            
+            # Create new structure
+            my_struct = StructureDataType(category_path, type_str, 0, self.dtm)
+        except:
+            pass
 
     def apply_function_signature(self, old_sig: str, new_sig: str):
         """Apply full function signature change"""
