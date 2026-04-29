@@ -14,16 +14,22 @@ from ghidra.program.model.symbol import SourceType
 from ghidra.program.model.data import DataType
 from ghidra.program.model.data import IntegerDataType
 from ghidra.app.cmd.function import ApplyFunctionSignatureCmd
+from ghidra.app.decompiler import DecompInterface
+from ghidra.program.model.pcode import HighFunctionDBUtil
 from ghidra.app.util.parser import FunctionSignatureParser
 from ghidra.util.task import ConsoleTaskMonitor
 from ghidra.program.model.listing import FunctionManager
 from ghidra.program.model.symbol import SymbolType
+from ghidra.program.model.listing import CodeUnit
+from ghidra.program.model.data import StructureDataType, DataTypeConflictHandler, CategoryPath
+from ghidra.program.model.data import PointerDataType
 
 class FEATURE_APPLIER:
     def __init__(self):
         self.monitor = ConsoleTaskMonitor()
         self.current_program = getCurrentProgram()
         self.listing = self.current_program.getListing()
+        self.dtm = self.current_program.getDataTypeManager()
         
     def parse_feature_line(self, line: str):
         """
@@ -61,11 +67,10 @@ class FEATURE_APPLIER:
         Example: "undefined4 FUN_1234()" -> ("FUN_1234", "undefined4", [])
                 "char* get_string(int param_1)" -> ("get_string", "char*", ["int param_1"])
         """
-        # Remove semicolon
         signature = signature.rstrip(';').strip()
         
-        # Extract function name and parameters
-        name_match = re.match(r'(.*?)\s+(\w+)\s*\((.*)\)', signature)
+        # Extract function name and parameters - allow optional whitespace between return type and function name
+        name_match = re.match(r'(.*?)\s*(\w+)\s*\((.*)\)', signature)
         if name_match:
             return_type = name_match.group(1).strip()
             func_name = name_match.group(2).strip()
@@ -77,17 +82,25 @@ class FEATURE_APPLIER:
                 # Split parameters by comma
                 param_parts = []
                 current = ""
-                in_star = False
+                paren_depth = 0  # Track parentheses nesting for complex types
+                in_angle_brackets = 0  # For templates if needed
+                
                 for char in params_str:
-                    if char == ',' and not in_star:
+                    if char == '(':
+                        paren_depth += 1
+                    elif char == ')':
+                        paren_depth -= 1
+                    elif char == '<':
+                        in_angle_brackets += 1
+                    elif char == '>':
+                        in_angle_brackets -= 1
+                    elif char == ',' and paren_depth == 0 and in_angle_brackets == 0:
                         param_parts.append(current.strip())
                         current = ""
-                    else:
-                        current += char
-                        if char == '*':
-                            in_star = True
-                        elif char.isspace() and in_star:
-                            in_star = False
+                        continue
+                    
+                    current += char
+                
                 if current:
                     param_parts.append(current.strip())
                 
@@ -98,6 +111,7 @@ class FEATURE_APPLIER:
                 'return_type': return_type,
                 'parameters': params
             }
+        
         return None
 
     def find_function(self, func_name: str):
@@ -142,6 +156,29 @@ class FEATURE_APPLIER:
             return True
         else:
             print(f"Variable {old_name} not found in function {func_name}")
+            return False
+        
+    def apply_rename_at_pcode_level(self, func_name: str, old_name: str, new_name: str):
+        """Rename variables at the pcode level, which works for decompiler-generated variables"""
+        print ("    - Attempting to rename at pcode level...")
+
+        function = self.find_function(func_name)
+        if not function:
+            print(f"    - Function {func_name} not found")
+            return False
+
+        # Get the high function (decompiler's representation)
+        decompiler = DecompInterface()
+        decompiler.openProgram(self.current_program)
+        
+        # Get decompiled function
+        decompiled_func = decompiler.decompileFunction(function, 0, self.monitor)
+        if not decompiled_func.decompileCompleted():
+            print(f"    - Failed to decompile function {func_name}")
+            return False
+        
+        high_function = decompiled_func.getHighFunction()
+        if not high_function:
             return False
 
     def apply_retype(self, func_name: str, var_name: str, new_type: str):
