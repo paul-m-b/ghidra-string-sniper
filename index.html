@@ -56,6 +56,37 @@ title: Ghidra-String-Sniper
 
   .card h3 {
     margin-top: 0;
+
+    
+  }
+  /* Two-column feature boxes */
+  .dual-container {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .feature-box {
+    background: #111;
+    border: 1px solid #2a2a2a;
+    padding: 25px;
+    border-radius: 12px;
+    width: 350px;
+    text-align: left;
+    box-shadow: 0 0 10px rgba(0, 255, 170, 0.08);
+    transition: all 0.2s ease;
+  }
+
+  .feature-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0 20px rgba(0, 255, 170, 0.2);
+  }
+
+  .feature-box h3 {
+    margin-top: 0;
+    color: #00ffaa;
   }
 
 </style>
@@ -63,34 +94,40 @@ title: Ghidra-String-Sniper
 <h1 class="page-title" style="text-transform:uppercase;" id="header">
   Ghidra String Sniper
 </h1>
+<p><strong>Automated String-Based Library Identification for Reverse Engineering</strong></p>
 
 <h3 style="color:red;">
-  Our wonderful team: Paul Biernat, Jack J, Jack Angelicho, Jaden Bowers, Cory Tsang
+  Our wonderful team: 
+  <a href="https://github.com/paul-m-b" target="_blank">Paul Biernat</a>, 
+  <a href="https://github.com/JackJ30" target="_blank">Jack J</a>, 
+  <a href="https://github.com/J-AngeI" target="_blank">Jack Angelicho</a>, 
+  <a href="https://github.com/Jaden-Bowers" target="_blank">Jaden Bowers</a>, 
+  <a href="https://github.com/CoryTsang" target="_blank">Cory Tsang</a>
 </h3>
-
 <h3>
   <a href="https://github.com/paul-m-b/ghidra-string-sniper">
     Developed during Fall 2025 – Spring 2026
   </a>
 </h3>
-
-<p class="message">Thank you for checking our project out!</p>
+<section>
+  <h2>Tech Stack</h2>
+  <p>
+    Ghidra (Java), Python backend, LLM integration, Sourcegraph API
+  </p>
+</section>
 
 <img src="ghidra-string-sniper/tree/experimental-features/Images/GSSLogo.png" alt="GSS Logo">
 
-<p>
-  Thank you RPISEC for the inspiration behind this project!
-  <a href="https://rpis.ec/">RPISEC's website</a>
-</p>
 
-<img src="ghidra-string-sniper/tree/experimental-features/Images/RPISEC.png" alt="RPISEC logo">
+<section>
+  <h2>Why This Matters</h2>
+  <p>
+    Reverse engineers often spend hours rediscovering known libraries due to stripped binaries.
+    Automating identification reduces analysis time, improves accuracy, and allows analysts to
+    focus on novel or security-relevant code.
+  </p>
+</section>
 
-<p>
-  RPISEC Discord:
-  <a href="https://discord.com/invite/esNEjvuy78">
-    Cool stuff and workshops happen here!
-  </a>
-</p>
 
 <section>
   <h2>Introduction / Proposal</h2>
@@ -103,14 +140,35 @@ title: Ghidra-String-Sniper
 </section>
 
 <section>
-  <h2>Proposed Solution</h2>
-  <ol style="text-align:left; display:inline-block;">
-    <li>Extract meaningful or unique strings from a binary</li>
-    <li>Query Sourcegraph for relevant code matches</li>
-    <li>Use an LLM to correlate results with assembly/decompiled output</li>
-    <li>Present matches for manual or automated application</li>
-  </ol>
+  <h2>System Overview</h2>
+
+  <div class="dual-container">
+
+    <div class="feature-box">
+      <h3>Our Initial Proposed Solution</h3>
+      <ol>
+        <li>Extract meaningful strings from binary</li>
+        <li>Query Sourcegraph for matches</li>
+        <li>Use LLM to correlate results</li>
+        <li>Suggest symbols & structures</li>
+      </ol>
+    </div>
+
+    <div class="feature-box">
+      <h3>How It Works (Current Implementation)</h3>
+      <ol>
+        <li>String extraction from binary</li>
+        <li>Sourcegraph search pipeline</li>
+        <li>LLM similarity ranking</li>
+        <li>Candidate matches returned to analyst</li>
+      </ol>
+    </div>
+
+  </div>
 </section>
+
+
+
 
 <section>
   <h2>Overall Goal</h2>
@@ -149,3 +207,30 @@ title: Ghidra-String-Sniper
 
   </div>
 </section>
+
+<section>
+  <h2>Future Work</h2>
+  <ul style="text-align:left; display:inline-block;">
+    <li>Automatic symbol application in Ghidra</li>
+    <li>Better ranking using semantic embeddings</li>
+    <li>Support for additional code search engines</li>
+    <li>Integration with decompiler APIs</li>
+  </ul>
+</section>
+
+
+
+<p>
+  Thank you RPISEC for the inspiration behind this project!
+  <a href="https://rpis.ec/">RPISEC's website</a>
+</p>
+
+<img src="ghidra-string-sniper/tree/experimental-features/Images/RPISEC.png" alt="RPISEC logo">
+
+<p>
+  RPISEC Discord:
+  <a href="https://discord.com/invite/esNEjvuy78">
+    Cool stuff and workshops happen here!
+  </a>
+</p>
+<p class="message">Thank you for checking our project out!</p>
