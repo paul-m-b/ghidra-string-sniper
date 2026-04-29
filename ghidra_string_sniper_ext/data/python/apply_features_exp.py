@@ -542,6 +542,7 @@ class FEATURE_APPLIER:
                     break
 
         return func_addr
+    
     def ensure_data_type_exists(self, type_str: str):
         """
         Create missing data type if it doesn't exist.
@@ -607,7 +608,7 @@ class FEATURE_APPLIER:
             return existing_type
         
         # Create a stub structure for the unknown type
-        print(f"    - Creating stub structure for custom type: {type_str}")
+        self.logger.logger.info(f"    - Creating stub structure for custom type: {type_str}")
         
         try:
             # Ensure category exists by getting or creating it
@@ -618,40 +619,25 @@ class FEATURE_APPLIER:
             # Create new structure
             my_struct = StructureDataType(category_path, type_str, 0, self.dtm)
             
-            # Add some placeholder fields based on naming conventions
-            # Get common base types
-            uint32_t = self.dtm.findDataType("/uint32_t")
-            if uint32_t is None:
-                uint32_t = self.dtm.findDataType("/int")
-            
-            char_ptr = self.dtm.findDataType("/char*")
-            if char_ptr is None:
-                char_ptr = self.dtm.getPointer(self.dtm.findDataType("/char"))
-            
-            void_ptr = self.dtm.getPointer(self.dtm.findDataType("/void"))
-            
-            # Generic struct
-            #my_struct.add(void_ptr, "data", "Placeholder data")
-            #my_struct.add(uint32_t, "size", "Placeholder size")
-            
             # Add a comment indicating this is a stub
             my_struct.setDescription(f"Stub structure for {type_str} (auto-created by GSS feature applier)")
             
             # Commit to data type manager
             resolved_struct = self.dtm.addDataType(my_struct, DataTypeConflictHandler.DEFAULT_HANDLER)
-            print(f"    - Created structure: {resolved_struct.getName()} (length: {resolved_struct.getLength()} bytes)")
+            self.logger.logger.info(f"    - Created structure: {resolved_struct.getName()} (length: {resolved_struct.getLength()} bytes)")
             
             return resolved_struct
             
         except Exception as e:
-            print(f"    - Error creating structure for {type_str}: {e}")
+            error_msg = f"Error creating structure for {type_str}: {e}"
+            self.logger.log_error("DATA_TYPE", error_msg, e)
             # Fallback to void* if structure creation fails
             void_ptr = self.dtm.getPointer(self.dtm.findDataType("/void"))
             if void_ptr:
                 return void_ptr
             return None
 
-    def apply_function_signature(self, old_sig: str, new_sig: str):
+    def apply_function_signature(self, old_sig: str, new_sig: str, function_name: str):
         """Apply full function signature change with type creation"""
 
         parser = FunctionSignatureParser(self.dtm, None)
@@ -659,11 +645,15 @@ class FEATURE_APPLIER:
         new_info = self.parse_function_signature(new_sig)
         
         if not new_info:
-            print(f"    - Failed to parse new signature: {new_sig}")
+            msg = f"Failed to parse new signature: {new_sig}"
+            self.logger.log_error("SIGNATURE", msg)
+            self.logger.log_signature_attempt(function_name, old_sig, new_sig, False, msg)
             return False
         
         if not old_info:
-            print(f"    - Failed to parse old signature: {old_sig}")
+            msg = f"Failed to parse old signature: {old_sig}"
+            self.logger.log_error("SIGNATURE", msg)
+            self.logger.log_signature_attempt(function_name, old_sig, new_sig, False, msg)
             return False
         
         # Validate and ensure all types exist before attempting to parse
@@ -671,7 +661,9 @@ class FEATURE_APPLIER:
         return_type = new_info['return_type']
         return_dt = self.ensure_data_type_exists(return_type)
         if return_dt is None:
-            print(f"    - Warning: Could not resolve return type '{return_type}', using 'void'")
+            msg = f"Could not resolve return type '{return_type}', using 'void'"
+            self.logger.logger.warning(msg)
+            self.logger.logger.debug(f"    - {msg}")
             return_type = 'void'
         
         # Check and fix parameter types
@@ -688,12 +680,13 @@ class FEATURE_APPLIER:
                 # Ensure type exists
                 param_dt = self.ensure_data_type_exists(param_type)
                 if param_dt is None:
-                    print(f"    - Warning: Could not resolve parameter type '{param_type}' for '{param_name}'")
+                    msg = f"Could not resolve parameter type '{param_type}' for '{param_name}'"
+                    self.logger.logger.warning(msg)
                     # Try to use void* as fallback for unknown types
                     void_ptr = self.dtm.getPointer(self.dtm.findDataType("/void"))
                     if void_ptr:
                         param_type = 'void*'
-                        print(f"    - Using void* as fallback for '{param_name}'")
+                        self.logger.logger.debug(f"    - Using void* as fallback for '{param_name}'")
                         params_valid = True
                     else:
                         params_valid = False
@@ -704,7 +697,9 @@ class FEATURE_APPLIER:
                 modified_params.append(param)
         
         if not params_valid:
-            print("    - Skipping function signature change due to unresolvable types")
+            msg = "Skipping function signature change due to unresolvable types"
+            self.logger.log_error("SIGNATURE", msg)
+            self.logger.log_signature_attempt(function_name, old_sig, new_sig, False, msg)
             return False
         
         # Build modified signature
@@ -712,28 +707,35 @@ class FEATURE_APPLIER:
         
         function = self.find_function(old_info['name'])
         if not function:
-            print(f"    - Function {old_info['name']} not found")
+            msg = f"Function {old_info['name']} not found"
+            self.logger.log_error("SIGNATURE", msg)
+            self.logger.log_signature_attempt(function_name, old_sig, new_sig, False, msg)
             return False
         
-        # Rename function if needed
-        if old_info['name'] != new_info['name']:
-            self.apply_rename(old_info['name'], old_info['name'], new_info['name'])
-            function = self.find_function(new_info['name'])
-        
         try:
+            # Rename function if needed
+            if old_info['name'] != new_info['name']:
+                self.apply_rename(old_info['name'], old_info['name'], new_info['name'])
+                function = self.find_function(new_info['name'])
+            
             # Try to parse with our potentially modified types
             new_signature = parser.parse(None, modified_sig)
             if new_signature is None:
-                print(f"    - Failed to parse function signature: {modified_sig}")
+                msg = f"Failed to parse function signature: {modified_sig}"
+                self.logger.log_error("SIGNATURE", msg)
+                self.logger.log_signature_attempt(function_name, old_sig, new_sig, False, msg)
                 return False
             
             func_addr = self.get_function_address(new_info['name'])
             cmd = ApplyFunctionSignatureCmd(func_addr, new_signature, SourceType.USER_DEFINED)
             runCommand(cmd)
+            self.logger.log_signature_attempt(function_name, old_sig, new_sig, True)
             print(f"    - Applied signature: {modified_sig}")
             return True
         except Exception as e:
-            print(f"    - Error applying signature: {e}")
+            msg = f"Error applying signature: {e}"
+            self.logger.log_error("SIGNATURE", msg, e)
+            self.logger.log_signature_attempt(function_name, old_sig, new_sig, False, str(e))
             return False
 
     def apply_changes_from_file(self, features_file: str):
@@ -747,15 +749,22 @@ class FEATURE_APPLIER:
             with open(features_file, 'r', encoding='utf-8') as f:
                 features = json.load(f)
         except Exception as e:
-            print(f"Error reading features file: {e}")
+            error_msg = f"Error reading features file: {e}"
+            self.logger.log_error("FILE_IO", error_msg, e)
+            print(error_msg)
             return
         
         # Get the function name from the features
         function_name = features.get('function_name')
         
         if not function_name:
-            print("Error: No function_name found in EXTRACTIONS.json file")
+            error_msg = "No function_name found in EXTRACTIONS.json file"
+            self.logger.log_error("FILE_FORMAT", error_msg)
+            print(error_msg)
             return
+        
+        # Log the start of processing this function
+        self.logger.log_function_start(function_name, features_file)
         
         print(f"Target function: {function_name}")
         
@@ -764,7 +773,7 @@ class FEATURE_APPLIER:
             sig = features['function_signature']
             if sig.get('original') and sig.get('proposed'):
                 print(f"\nApplying function signature change...")
-                if self.apply_function_signature(sig['original'], sig['proposed']) == False:
+                if self.apply_function_signature(sig['original'], sig['proposed'], function_name) == False:
                     print ("    - Adding function signature comment")
                     addr = self.get_function_address(function_name)
                     comment = "GSS failed to apply: "+sig['proposed']
@@ -781,9 +790,11 @@ class FEATURE_APPLIER:
                             print("    - No code unit found at {}".format(addr))
                             
                         self.current_program.endTransaction(tx_id, True)
-                    except:
+                    except Exception as e:
                         self.current_program.endTransaction(tx_id, False)
-                        print("    - Error adding comment: {}".format(e))
+                        error_msg = f"Error adding comment: {e}"
+                        self.logger.log_error("COMMENT", error_msg, e)
+                        print(error_msg)
 
 
         
@@ -813,7 +824,8 @@ class FEATURE_APPLIER:
                     self.apply_retype(
                         function_name,
                         var_name,
-                        var_change['proposed_type']
+                        var_change['proposed_type'],
+                        var_change.get('original_type', 'unknown')
                     )
         
         # Apply function renames (if not already handled by signature)
@@ -830,6 +842,7 @@ class FEATURE_APPLIER:
                             func_rename['proposed']
                         )
         
+        self.logger.log_function_complete(function_name)
         print(f"\nCompleted changes for {function_name}")
 
     def process_all_extractions(self, extractions_dir: str, pattern: str = "EXTRACTIONS.json"):
@@ -845,7 +858,9 @@ class FEATURE_APPLIER:
         extractions_path = Path(extractions_dir)
         
         if not extractions_path.exists():
-            print(f"Error: Directory {extractions_dir} does not exist")
+            error_msg = f"Directory {extractions_dir} does not exist"
+            self.logger.log_error("DIRECTORY", error_msg)
+            print(error_msg)
             return
         
         # Find all JSON files matching pattern in immediate subdirectories
@@ -860,7 +875,9 @@ class FEATURE_APPLIER:
         json_files = list(set(json_files))
         
         if not json_files:
-            print(f"No {pattern} files found in subdirectories of {extractions_dir}")
+            error_msg = f"No {pattern} files found in subdirectories of {extractions_dir}"
+            self.logger.log_error("DIRECTORY", error_msg)
+            print(error_msg)
             
             # Also check for any JSON files that might be extraction results
             any_json = list(extractions_path.glob("*.json"))
@@ -896,7 +913,9 @@ class FEATURE_APPLIER:
                 self.apply_changes_from_file(str(json_file))
                 results.append((hash_dir, True, None))
             except Exception as e:
-                print(f"Error processing {hash_dir}: {e}")
+                error_msg = f"Error processing {hash_dir}: {e}"
+                self.logger.log_error("PROCESSING", error_msg, e)
+                print(error_msg)
                 import traceback
                 traceback.print_exc()
                 results.append((hash_dir, False, str(e)))
@@ -908,6 +927,15 @@ def main():
     Each hash subdirectory should contain an EXTRACTIONS.json file
     """
     
+    # Initialize logger
+    print("Initializing GSS Feature Applier with logging...")
+    
+    # You can specify a custom log directory here
+    # log_dir = "C:/path/to/your/logs"
+    # logger = FeatureLogger(log_dir)
+    # applier = FEATURE_APPLIER(logger)
+    
+    # Or use default logging (creates logs in script directory)
     applier = FEATURE_APPLIER()
     
     decomps_dir = "C:/Users/Jack/Desktop/gss/ghidra_string_sniper_ext/data/python/GSS_decomps"
@@ -915,6 +943,9 @@ def main():
     # Process all extraction files in hash subdirectories
     applier.process_all_extractions(decomps_dir)
 
+    # Generate and display summary report
+    applier.logger.generate_summary()
+    applier.logger.close()
     
     print("\n" + "="*60)
     print("Feature application completed")
