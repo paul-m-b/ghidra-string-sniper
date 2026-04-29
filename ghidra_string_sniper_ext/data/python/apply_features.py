@@ -520,8 +520,8 @@ class FEATURE_APPLIER:
         # Apply variable changes
         if features.get('variables'):
             print(f"\nApplying variable changes ({len(features['variables'])} variables)...")
-
-        for var_change in features['variables']:
+            
+            for var_change in features['variables']:
                 # Handle rename
                 if var_change.get('proposed_name') and var_change['proposed_name'] != var_change.get('original_name'):
                     print(f"RENAMING: {var_change['original_name']} -> {var_change['proposed_name']}")
@@ -634,17 +634,21 @@ class FEATURE_APPLIER:
 def main():
     """
     Usage: 
-    1. Set the function name and features file path
-    2. Run the script
+    Set the path to the GSS results directory containing hash subdirectories
+    Each hash subdirectory should contain an EXTRACTIONS.json file
     """
-
-    # testing woo
-    TARGET_FUNCTION = "main"
-    FEATURES_FILE = "C:/Users/Jack/ghidra_scripts/test_changes.txt"
-
+    
     applier = FEATURE_APPLIER()
-    applier.apply_changes(TARGET_FUNCTION, FEATURES_FILE)
-    print("\nFeature application completed")
+    
+    decomps_dir = "C:/Users/Jack/Desktop/gss/ghidra_string_sniper_ext/data/python/GSS_decomps"
+
+    # Process all extraction files in hash subdirectories
+    applier.process_all_extractions(decomps_dir)
+
+    
+    print("\n" + "="*60)
+    print("Feature application completed")
+    print("="*60)
 
 if __name__ == "__main__":
     main()
