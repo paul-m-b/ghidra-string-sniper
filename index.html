@@ -5,10 +5,13 @@ title: Ghidra-String-Sniper
 
 <style>
   body {
-    text-align: center; 
+    text-align: center;
   }
+
   img {
     display: block;
+    margin: 20px auto;
+    max-width: 300px;
     animation: fadeIn 1s ease-out;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
@@ -22,61 +25,127 @@ title: Ghidra-String-Sniper
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
+
+  /* Section spacing */
+  section {
+    margin: 40px auto;
+    max-width: 800px;
+  }
+
+  /* Card container (for Status / Docs / License) */
+  .card-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 30px;
+  }
+
+  .card {
+    background: #1e1e1e;
+    padding: 20px;
+    border-radius: 12px;
+    width: 250px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    transition: transform 0.2s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-5px);
+  }
+
+  .card h3 {
+    margin-top: 0;
+  }
+
 </style>
-<h1 class="page-title" style="text-transform:uppercase;" id="header">A Super awesome and cool ghidra extension</h1>
-<h3 style="color:red;">Our wonderful team: Paul Biernat, Jack J, Jack Angelicho, Jaden Bowers, Cory Tsang</h3>
-<h3><a href="https://rpis.ec/">Developed during the Fall 2025 and Spring 2026 Semester.</a></h3>
+
+<h1 class="page-title" style="text-transform:uppercase;" id="header">
+  Ghidra String Sniper
+</h1>
+
+<h3 style="color:red;">
+  Our wonderful team: Paul Biernat, Jack J, Jack Angelicho, Jaden Bowers, Cory Tsang
+</h3>
+
+<h3>
+  <a href="https://github.com/paul-m-b/ghidra-string-sniper">
+    Developed during Fall 2025 – Spring 2026
+  </a>
+</h3>
+
 <p class="message">Thank you for checking our project out!</p>
 
 <img src="ghidra-string-sniper/tree/experimental-features/Images/GSSLogo.png" alt="GSS Logo">
-<!-- MAKE IMAGE SMALLER-->
 
+<p>
+  Thank you RPISEC for the inspiration behind this project!
+  <a href="https://rpis.ec/">RPISEC's website</a>
+</p>
 
-<p>Thank you RPISEC for the inspiration behind this project! <a href="https://rpis.ec/">RPISEC's website</a></p>
 <img src="ghidra-string-sniper/tree/experimental-features/Images/RPISEC.png" alt="RPISEC logo">
-<!-- MAKE IMAGE SMALLER-->
-<p>RPISEC Discord: <a href="https://discord.com/invite/esNEjvuy78">Cool stuff and workshops happen here!</a></p>
 
-
-
-
-<h2> Introduction / Proposal</h2>
 <p>
-Reverse engineering proprietary binaries is often hindered by stripped symbols, making it difficult to quickly understand a program’s structure and behavior. 
-Analysts can end up wasting significant time reverse engineering common libraries or relying on guesswork, which may lead to inaccurate conclusions.
-
-However, even stripped binaries frequently contain useful strings. 
-These strings can provide valuable hints about underlying functionality, libraries, or protocols in use.
-
-Tools like Sourcegraph enable large scale searching across public repositories, making them especially useful for correlating these strings with real world implementations. 
-By searching for distinctive strings extracted from a binary, it is often possible to identify matching codebases or libraries. 
-From there, reverse engineers can import relevant headers, symbols, and structures—accelerating analysis and improving accuracy.
+  RPISEC Discord:
+  <a href="https://discord.com/invite/esNEjvuy78">
+    Cool stuff and workshops happen here!
+  </a>
 </p>
 
-<h2>Proprosed Solution</h2>
+<section>
+  <h2>Introduction / Proposal</h2>
+  <p>
+    Reverse engineering proprietary binaries is often hindered by stripped symbols, making it difficult to quickly understand a program’s structure and behavior. Analysts may waste time reverse engineering common libraries or rely on guesswork, leading to inaccurate conclusions.
+  </p>
+  <p>
+    Even stripped binaries often contain useful strings that reveal functionality, libraries, or protocols. Tools like Sourcegraph allow large-scale searching across public repositories, enabling analysts to match these strings to real implementations and import relevant headers, symbols, and structures.
+  </p>
+</section>
 
-<ol>
-    <li>Extract and identify meaningful or unique strings from a binary</li>
+<section>
+  <h2>Proposed Solution</h2>
+  <ol style="text-align:left; display:inline-block;">
+    <li>Extract meaningful or unique strings from a binary</li>
     <li>Query Sourcegraph for relevant code matches</li>
-    <li>Use an LLM to correlate search results with the binary’s assembly or decompiled output</li>
-    <li>Present likely matches to the analyst for manual or automated application</li>
-</ol>
+    <li>Use an LLM to correlate results with assembly/decompiled output</li>
+    <li>Present matches for manual or automated application</li>
+  </ol>
+</section>
 
-<h2>Overall Goal</h2>
-<p>
-    The goal is to reduce time spent on redundant analysis, improve identification of known components, and provide a clearer high level understanding of a target binary early in the reverse engineering process.
-</p>
+<section>
+  <h2>Overall Goal</h2>
+  <p>
+    Reduce redundant analysis, improve identification of known components, and provide a clearer high-level understanding of a binary early in the reverse engineering process.
+  </p>
+</section>
 
-<!-- 
-DESIGN FRAMEWORK FOR THE REST OF THE PAGE:
+<section>
+  <div class="card-container">
 
-Introduction section (centered):
-Text for introduction section goes directly below
-Potentially rework/ cut down for better user readability
+    <div class="card">
+      <h3>Status</h3>
+      <p>
+        Ghidra String Sniper is in active development. The Python backend is functional as a proof of concept, and the Ghidra extension is in progress.
+      </p>
+    </div>
 
-Introduction/proposal:
-Body text below.
-Possibly new section for the bulleted list
+    <div class="card">
+      <h3>Documentation</h3>
+      <p>
+        <a href="https://github.com/paul-m-b/ghidra-string-sniper/blob/master/docs/README.md">
+          View Documentation
+        </a>
+      </p>
+    </div>
 
-Then maybe break Status, Documentation, and license into 3 separate box UIs on the same line next to eachother. 
--->
+    <div class="card">
+      <h3>License</h3>
+      <p>
+        <a href="https://github.com/paul-m-b/ghidra-string-sniper/blob/master/LICENSE">
+          MIT License
+        </a>
+      </p>
+    </div>
+
+  </div>
+</section>
