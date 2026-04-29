@@ -120,6 +120,58 @@ class FeatureLogger:
                 error_msg += f" - {details}"
             self.logger.error(error_msg)
 
+    def log_signature_attempt(self, function_name, old_sig, new_sig, success, details=None):
+        """Log signature change operation"""
+        self.stats['signature_changes']['attempted'] += 1
+        if success:
+            self.stats['signature_changes']['successful'] += 1
+            self.logger.info(f"SIGNATURE SUCCESS: {function_name}")
+            self.logger.debug(f"  Old: {old_sig}")
+            self.logger.debug(f"  New: {new_sig}")
+        else:
+            self.stats['signature_changes']['failed'] += 1
+            error_msg = f"SIGNATURE FAILED: {function_name}"
+            if details:
+                error_msg += f" - {details}"
+            self.logger.error(error_msg)
+            self.logger.error(f"  Old: {old_sig}")
+            self.logger.error(f"  New: {new_sig}")
+            
+    def log_error(self, error_type, message, exception=None):
+        """Log general errors"""
+        self.stats['errors'].append({
+            'type': error_type,
+            'message': message,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        if exception:
+            self.logger.error(f"{error_type}: {message}", exc_info=True)
+        else:
+            self.logger.error(f"{error_type}: {message}")
+            
+    def log_function_start(self, function_name, file_path):
+        """Log start of processing a function"""
+        self.stats['functions_processed'] += 1
+        self.logger.info("")
+        self.logger.info("-"*60)
+        self.logger.info(f"Processing Function: {function_name}")
+        self.logger.info(f"Source File: {file_path}")
+        self.logger.info("-"*60)
+        
+    def log_function_complete(self, function_name):
+        """Log completion of function processing"""
+        self.logger.info(f"Completed processing: {function_name}")
+        
+    def generate_summary(self):
+        """Generate a summary report of all operations"""
+        with open(self.summary_file, 'w', encoding='utf-8') as f:
+            f.write("="*80 + "\n")
+            f.write(f"GSS FEATURE APPLIER SUMMARY REPORT\n")
+            f.write(f"Session: {self.session_timestamp}\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*80 + "\n\n")
+
 class FEATURE_APPLIER:
     def __init__(self):
         self.monitor = ConsoleTaskMonitor()
