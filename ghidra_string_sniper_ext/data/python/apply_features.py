@@ -293,7 +293,7 @@ class FEATURE_APPLIER:
             'undefined', 'undefined1', 'undefined2', 'undefined4', 'undefined8',
             'FILE', 'fpos_t', 'time_t', 'off_t'
         }
-
+        
         # Check if this is a known base type
         if base_type in known_base_types:
             # For pointer types, we need to ensure the base type exists
@@ -382,10 +382,9 @@ class FEATURE_APPLIER:
             return None
 
     def apply_function_signature(self, old_sig: str, new_sig: str):
-        """Apply full function signature change"""
+        """Apply full function signature change with type creation"""
 
-        dtm = self.current_program.getDataTypeManager()
-        parser = FunctionSignatureParser(dtm, None)
+        parser = FunctionSignatureParser(self.dtm, None)
         old_info = self.parse_function_signature(old_sig)
         new_info = self.parse_function_signature(new_sig)
         
@@ -415,6 +414,31 @@ class FEATURE_APPLIER:
             if len(param_parts) >= 2:
                 param_type = ' '.join(param_parts[:-1])
                 param_name = param_parts[-1]
+                
+                # Ensure type exists
+                param_dt = self.ensure_data_type_exists(param_type)
+                if param_dt is None:
+                    print(f"    - Warning: Could not resolve parameter type '{param_type}' for '{param_name}'")
+                    # Try to use void* as fallback for unknown types
+                    void_ptr = self.dtm.getPointer(self.dtm.findDataType("/void"))
+                    if void_ptr:
+                        param_type = 'void*'
+                        print(f"    - Using void* as fallback for '{param_name}'")
+                        params_valid = True
+                    else:
+                        params_valid = False
+                
+                modified_params.append(f"{param_type} {param_name}")
+            else:
+                # If can't parse, keep original
+                modified_params.append(param)
+        
+        if not params_valid:
+            print("    - Skipping function signature change due to unresolvable types")
+            return False
+        
+        # Build modified signature
+        modified_sig = f"{return_type} {new_info['name']}({', '.join(modified_params)})"
         
         function = self.find_function(old_info['name'])
         if not function:
@@ -426,6 +450,22 @@ class FEATURE_APPLIER:
             self.apply_rename(old_info['name'], old_info['name'], new_info['name'])
             # Refresh function reference with new name
             function = self.find_function(new_info['name'])
+
+            try:
+                # Try to parse with our potentially modified types
+                new_signature = parser.parse(None, modified_sig)
+                if new_signature is None:
+                    print(f"    - Failed to parse function signature: {modified_sig}")
+                    return False
+                
+                func_addr = self.get_function_address(new_info['name'])
+                cmd = ApplyFunctionSignatureCmd(func_addr, new_signature, SourceType.USER_DEFINED)
+                runCommand(cmd)
+                print(f"    - Applied signature: {modified_sig}")
+                return True
+            except Exception as e:
+                print(f"    - Error applying signature: {e}")
+                return False
 
         # Updating a function signature requires redefining it
         new_signature = parser.parse(None, new_sig) 
