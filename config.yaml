@@ -1,0 +1,10 @@
+# remote_theme: pages-themes/hacker@v0.2.0
+remote_theme: pages-themes/hacker
+plugins:
+- jekyll-remote-theme 
+
+# To preview site on the computer
+gem "github-pages", group: :jekyll_plugins
+
+title: [Ghidra String Sniper]
+description: [Super awesome and cool ghidra extension]
