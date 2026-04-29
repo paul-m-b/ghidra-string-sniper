@@ -347,8 +347,39 @@ class FEATURE_APPLIER:
             
             # Create new structure
             my_struct = StructureDataType(category_path, type_str, 0, self.dtm)
-        except:
-            pass
+            
+            # Add some placeholder fields based on naming conventions
+            # Get common base types
+            uint32_t = self.dtm.findDataType("/uint32_t")
+            if uint32_t is None:
+                uint32_t = self.dtm.findDataType("/int")
+            
+            char_ptr = self.dtm.findDataType("/char*")
+            if char_ptr is None:
+                char_ptr = self.dtm.getPointer(self.dtm.findDataType("/char"))
+            
+            void_ptr = self.dtm.getPointer(self.dtm.findDataType("/void"))
+            
+            # Generic struct
+            #my_struct.add(void_ptr, "data", "Placeholder data")
+            #my_struct.add(uint32_t, "size", "Placeholder size")
+            
+            # Add a comment indicating this is a stub
+            my_struct.setDescription(f"Stub structure for {type_str} (auto-created by GSS feature applier)")
+            
+            # Commit to data type manager
+            resolved_struct = self.dtm.addDataType(my_struct, DataTypeConflictHandler.DEFAULT_HANDLER)
+            print(f"    - Created structure: {resolved_struct.getName()} (length: {resolved_struct.getLength()} bytes)")
+            
+            return resolved_struct
+            
+        except Exception as e:
+            print(f"    - Error creating structure for {type_str}: {e}")
+            # Fallback to void* if structure creation fails
+            void_ptr = self.dtm.getPointer(self.dtm.findDataType("/void"))
+            if void_ptr:
+                return void_ptr
+            return None
 
     def apply_function_signature(self, old_sig: str, new_sig: str):
         """Apply full function signature change"""
@@ -358,9 +389,32 @@ class FEATURE_APPLIER:
         old_info = self.parse_function_signature(old_sig)
         new_info = self.parse_function_signature(new_sig)
         
-        if not old_info or not new_info:
-            print(f"Failed to parse signatures: {old_sig} -> {new_sig}")
+        if not new_info:
+            print(f"    - Failed to parse new signature: {new_sig}")
             return False
+        
+        if not old_info:
+            print(f"    - Failed to parse old signature: {old_sig}")
+            return False
+        
+        # Validate and ensure all types exist before attempting to parse
+        # Check return type
+        return_type = new_info['return_type']
+        return_dt = self.ensure_data_type_exists(return_type)
+        if return_dt is None:
+            print(f"    - Warning: Could not resolve return type '{return_type}', using 'void'")
+            return_type = 'void'
+        
+        # Check and fix parameter types
+        modified_params = []
+        params_valid = True
+        
+        for param in new_info['parameters']:
+            # Parse parameter into type and name
+            param_parts = param.strip().split()
+            if len(param_parts) >= 2:
+                param_type = ' '.join(param_parts[:-1])
+                param_name = param_parts[-1]
         
         function = self.find_function(old_info['name'])
         if not function:
