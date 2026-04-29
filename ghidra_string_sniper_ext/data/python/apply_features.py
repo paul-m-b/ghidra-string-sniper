@@ -172,6 +172,85 @@ class FeatureLogger:
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("="*80 + "\n\n")
 
+            f.write(f"Functions Processed: {self.stats['functions_processed']}\n\n")
+            
+            f.write("OPERATION STATISTICS:\n")
+            f.write("-"*40 + "\n")
+            
+            # Signature changes
+            sig = self.stats['signature_changes']
+            f.write(f"Function Signature Changes:\n")
+            f.write(f"  Attempted: {sig['attempted']}\n")
+            f.write(f"  Successful: {sig['successful']}\n")
+            f.write(f"  Failed: {sig['failed']}\n")
+            if sig['attempted'] > 0:
+                f.write(f"  Success Rate: {sig['successful']/sig['attempted']*100:.1f}%\n")
+            f.write("\n")
+            
+            # Renames
+            ren = self.stats['renames']
+            f.write(f"Variable/Function Renames:\n")
+            f.write(f"  Attempted: {ren['attempted']}\n")
+            f.write(f"  Successful: {ren['successful']}\n")
+            f.write(f"  Failed: {ren['failed']}\n")
+            if ren['attempted'] > 0:
+                f.write(f"  Success Rate: {ren['successful']/ren['attempted']*100:.1f}%\n")
+            f.write("\n")
+            
+            # Pcode renames
+            pcode = self.stats['pcode_renames']
+            f.write(f"Pcode-Level Renames:\n")
+            f.write(f"  Attempted: {pcode['attempted']}\n")
+            f.write(f"  Successful: {pcode['successful']}\n")
+            f.write(f"  Failed: {pcode['failed']}\n")
+            if pcode['attempted'] > 0:
+                f.write(f"  Success Rate: {pcode['successful']/pcode['attempted']*100:.1f}%\n")
+            f.write("\n")
+            
+            # Retypes
+            ret = self.stats['retypes']
+            f.write(f"Variable Retypes:\n")
+            f.write(f"  Attempted: {ret['attempted']}\n")
+            f.write(f"  Successful: {ret['successful']}\n")
+            f.write(f"  Failed: {ret['failed']}\n")
+            if ret['attempted'] > 0:
+                f.write(f"  Success Rate: {ret['successful']/ret['attempted']*100:.1f}%\n")
+            f.write("\n")
+            
+            # Error summary
+            f.write("ERROR SUMMARY:\n")
+            f.write("-"*40 + "\n")
+            if self.stats['errors']:
+                f.write(f"Total Errors: {len(self.stats['errors'])}\n\n")
+                for i, error in enumerate(self.stats['errors'], 1):
+                    f.write(f"{i}. [{error['type']}] {error['message']}\n")
+                    f.write(f"   Time: {error['timestamp']}\n\n")
+            else:
+                f.write("No errors recorded.\n")
+            
+            f.write("\n" + "="*80 + "\n")
+            f.write(f"Log files:\n")
+            f.write(f"  Main log: {self.main_log_file}\n")
+            f.write(f"  Error log: {self.error_log_file}\n")
+            f.write(f"  Summary report: {self.summary_file}\n")
+            f.write("="*80 + "\n")
+        
+        # Print summary to console
+        print("\n" + "="*60)
+        print("OPERATION SUMMARY")
+        print("="*60)
+        print(f"Functions Processed: {self.stats['functions_processed']}")
+        print(f"Signature Changes: {self.stats['signature_changes']['successful']}/{self.stats['signature_changes']['attempted']}")
+        print(f"Renames: {self.stats['renames']['successful']}/{self.stats['renames']['attempted']}")
+        print(f"Pcode Renames: {self.stats['pcode_renames']['successful']}/{self.stats['pcode_renames']['attempted']}")
+        print(f"Retypes: {self.stats['retypes']['successful']}/{self.stats['retypes']['attempted']}")
+        print(f"Errors: {len(self.stats['errors'])}")
+        print(f"\nLogs saved to: {self.log_dir}")
+        print(f"Summary report: {self.summary_file}")
+        print("="*60)
+        
+        self.logger.info("Session completed - summary report generated")
+
 class FEATURE_APPLIER:
     def __init__(self):
         self.monitor = ConsoleTaskMonitor()
