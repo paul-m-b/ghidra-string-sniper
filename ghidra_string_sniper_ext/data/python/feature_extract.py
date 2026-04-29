@@ -18,7 +18,7 @@ class FEATURE_EXTRACT:
     def __init__(self):
         self.MODEL="openai/gpt-4o-mini"
         self.LLM = LLM_INTERACT()
-        self.CONFIDENCE_THRESHOLD = 8
+        self.CONFIDENCE_THRESHOLD = 6.5
 
     def open_file(self, path: str, mode: str) -> str:
         try:
@@ -29,19 +29,55 @@ class FEATURE_EXTRACT:
             return "NO FILE CONTENT REPORTED. ASSUME NO CODE"
 
     def extract_features(self, str_hash: str, decomp_func_path: str, source_func_path: str):
-        final_content = ""
-
         decomp_func = self.open_file(decomp_func_path, "r")
         source_func = self.open_file(source_func_path, "r")
-
-        #FUNCTION SIGNATURES
-
+        
+        # Extract function name from decompiled function
+        function_name = self.extract_function_name(decomp_func)
+        
         system_prompt = self.open_file("cfg/featext_system.txt", "r")
-        user_prompt = f"Extract features from the following functions:\nDECOMPILATION:\n{decomp_func}\n---\nOPEN-SOURCE CODE:\n{source_func}\n---"
+        
+        # Update system prompt to include function name in output
+        json_system_prompt = system_prompt + """
+        
+        IMPORTANT: Output your results as a JSON object with the following structure:
+        {
+            "function_name": "name_of_the_function",
+            "function_signature": {
+                "original": "original signature",
+                "proposed": "proposed signature"
+            },
+            "variables": [
+                {
+                    "original_name": "uVar1",
+                    "proposed_name": "count",
+                    "original_type": "undefined4",
+                    "proposed_type": "int"
+                }
+            ],
+            "function_renames": [
+                {
+                    "original": "FUN_1234",
+                    "proposed": "get_string"
+                }
+            ]
+        }
+        
+        CRITICAL CONSISTENCY RULES:
+        1. The "function_name" field MUST reflect the FINAL function name after applying any renames
+        2. If you propose a function rename in "function_signature.proposed", the "function_name" field MUST use the new name
+        3. ALL variable renames and retypes MUST use the FINAL function name from the "function_name" field
+        4. DO NOT include variables within the function signature inside the "variables" field
+        5. Do NOT include a separate "function_renames" array - handle all function renames through the signature change
+        """
+        
+        user_prompt = f"Analyze these functions:\nDECOMPILATION:\n{decomp_func}\n---\nOPEN-SOURCE CODE:\n{source_func}\n---"
+        
         messages = [
-            {"role":"system","content":system_prompt},
-            {"role":"user","content":user_prompt}
+            {"role": "system", "content": json_system_prompt},
+            {"role": "user", "content": user_prompt}
         ]
+        
         response = self.LLM.query_LLM(self.MODEL, messages)
         content = response["choices"][0]["message"]["content"]
         final_content = final_content + content + "\n"
