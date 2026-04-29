@@ -28,7 +28,55 @@ title: Ghidra-String-Sniper
 <h3><a href="https://rpis.ec/">Developed during the Fall 2025 and Spring 2026 Semester.</a></h3>
 <p class="message">Thank you for checking our project out!</p>
 
+<img src="ghidra-string-sniper/tree/experimental-features/Images/GSSLogo.png" alt="GSS Logo">
+<!-- MAKE IMAGE SMALLER-->
+
+
 <p>Thank you RPISEC for the inspiration behind this project! <a href="https://rpis.ec/">RPISEC's website</a></p>
-<img src="URLTOPNGHERE" alt="RPISEC logo">
+<img src="ghidra-string-sniper/tree/experimental-features/Images/RPISEC.png" alt="RPISEC logo">
 <!-- MAKE IMAGE SMALLER-->
 <p>RPISEC Discord: <a href="https://discord.com/invite/esNEjvuy78">Cool stuff and workshops happen here!</a></p>
+
+
+
+
+<h2> Introduction / Proposal</h2>
+<p>
+Reverse engineering proprietary binaries is often hindered by stripped symbols, making it difficult to quickly understand a program’s structure and behavior. 
+Analysts can end up wasting significant time reverse engineering common libraries or relying on guesswork, which may lead to inaccurate conclusions.
+
+However, even stripped binaries frequently contain useful strings. 
+These strings can provide valuable hints about underlying functionality, libraries, or protocols in use.
+
+Tools like Sourcegraph enable large scale searching across public repositories, making them especially useful for correlating these strings with real world implementations. 
+By searching for distinctive strings extracted from a binary, it is often possible to identify matching codebases or libraries. 
+From there, reverse engineers can import relevant headers, symbols, and structures—accelerating analysis and improving accuracy.
+</p>
+
+<h2>Proprosed Solution</h2>
+
+<ol>
+    <li>Extract and identify meaningful or unique strings from a binary</li>
+    <li>Query Sourcegraph for relevant code matches</li>
+    <li>Use an LLM to correlate search results with the binary’s assembly or decompiled output</li>
+    <li>Present likely matches to the analyst for manual or automated application</li>
+</ol>
+
+<h2>Overall Goal</h2>
+<p>
+    The goal is to reduce time spent on redundant analysis, improve identification of known components, and provide a clearer high level understanding of a target binary early in the reverse engineering process.
+</p>
+
+<!-- 
+DESIGN FRAMEWORK FOR THE REST OF THE PAGE:
+
+Introduction section (centered):
+Text for introduction section goes directly below
+Potentially rework/ cut down for better user readability
+
+Introduction/proposal:
+Body text below.
+Possibly new section for the bulleted list
+
+Then maybe break Status, Documentation, and license into 3 separate box UIs on the same line next to eachother. 
+-->
