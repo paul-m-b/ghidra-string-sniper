@@ -416,71 +416,91 @@ class FEATURE_APPLIER:
 
         function = self.find_function(func_name)
         if not function:
-            print(f"    - Function {func_name} not found")
+            msg = f"Function {func_name} not found"
+            self.logger.log_error("PCODE_RENAME", msg)
+            self.logger.log_pcode_rename_attempt(func_name, old_name, new_name, False, msg)
             return False
 
-        # Get the high function (decompiler's representation)
-        decompiler = DecompInterface()
-        decompiler.openProgram(self.current_program)
-        
-        # Get decompiled function
-        decompiled_func = decompiler.decompileFunction(function, 0, self.monitor)
-        if not decompiled_func.decompileCompleted():
-            print(f"    - Failed to decompile function {func_name}")
+        try:
+            # Get the high function (decompiler's representation)
+            decompiler = DecompInterface()
+            decompiler.openProgram(self.current_program)
+            
+            # Get decompiled function
+            decompiled_func = decompiler.decompileFunction(function, 0, self.monitor)
+            if not decompiled_func.decompileCompleted():
+                msg = f"Failed to decompile function {func_name}"
+                self.logger.log_error("PCODE_RENAME", msg)
+                self.logger.log_pcode_rename_attempt(func_name, old_name, new_name, False, msg)
+                return False
+            
+            high_function = decompiled_func.getHighFunction()
+            if not high_function:
+                msg = f"No high function for {func_name}"
+                self.logger.log_pcode_rename_attempt(func_name, old_name, new_name, False, msg)
+                return False
+            
+            # Get local variables
+            local_symbol_map = high_function.getLocalSymbolMap()
+            
+            # Find variable by name
+            for symbol in local_symbol_map.getSymbols():
+                if symbol.getName() == old_name:
+                    HighFunctionDBUtil.updateDBVariable(symbol, new_name, None, SourceType.USER_DEFINED)
+                    self.logger.log_pcode_rename_attempt(func_name, old_name, new_name, True)
+                    print(f"    - Renamed pcode variable {old_name} -> {new_name} in {func_name}")
+                    return True
+            
+            msg = f"Variable {old_name} not found in pcode representation"
+            self.logger.log_pcode_rename_attempt(func_name, old_name, new_name, False, msg)
+            print(f"    - {msg}")
             return False
-        
-        high_function = decompiled_func.getHighFunction()
-        if not high_function:
+        except Exception as e:
+            self.logger.log_error("PCODE_RENAME", f"Exception during pcode rename", e)
+            self.logger.log_pcode_rename_attempt(func_name, old_name, new_name, False, str(e))
             return False
-        
-        # Get local variables
-        local_symbol_map = high_function.getLocalSymbolMap()
-        
-        # Find variable by name
-        for symbol in local_symbol_map.getSymbols():
-            if symbol.getName() == old_name:
-                HighFunctionDBUtil.updateDBVariable(symbol, new_name, None, SourceType.USER_DEFINED)
-                print(f"    - Renamed pcode variable {old_name} -> {new_name} in {func_name}")
-                return True
-        
-        # Also check parameters
-        #param_symbol_map = high_function.getParamSymbolMap()
-        #for symbol in param_symbol_map.getSymbols():
-        #    if symbol.getName() == old_name:
-        #        symbol.setName(new_name, SourceType.USER_DEFINED)
-        #        print(f"Renamed parameter {old_name} -> {new_name} in {function.getName()}")
-        #        return True
-    
-        print(f"    - Variable {old_name} not found in pcode representation")
-        return False
 
-    def apply_retype(self, func_name: str, var_name: str, new_type: str):
+    def apply_retype(self, func_name: str, var_name: str, new_type: str, old_type: str = "unknown"):
         """Apply variable/parameter retype operation"""
         
         function = self.find_function(func_name)
         if not function:
-            print(f"    - Function {func_name} not found")
+            msg = f"Function {func_name} not found"
+            self.logger.log_error("RETYPE", msg)
+            self.logger.log_retype_attempt(func_name, var_name, old_type, new_type, False, msg)
             return False
         
-        # Ensure the type exists before attempting to apply
-        data_type = self.ensure_data_type_exists(new_type)
-        if data_type is None:
-            print(f"    - Warning: Could not resolve type '{new_type}' for '{var_name}', skipping")
-            return False
-        
-        # Check if it's a return type
-        if var_name == "return":
-            function.setReturnType(data_type, SourceType.USER_DEFINED)
-            print(f"    - Changed return type to {new_type} for {func_name}")
-            return True
-        
-        var = self.find_variable_in_function(function, var_name)
-        if var:
-            var.setDataType(data_type, SourceType.USER_DEFINED)
-            print(f"    - Retyped {var_name} -> {new_type} in function {func_name}")
-            return True
-        else:
-            print(f"    - Variable {var_name} not found in function {func_name}")
+        try:
+            # Ensure the type exists before attempting to apply
+            data_type = self.ensure_data_type_exists(new_type)
+            if data_type is None:
+                msg = f"Could not resolve type '{new_type}' for '{var_name}'"
+                self.logger.log_error("RETYPE", msg)
+                self.logger.log_retype_attempt(func_name, var_name, old_type, new_type, False, msg)
+                print(f"    - Warning: {msg}, skipping")
+                return False
+            
+            # Check if it's a return type
+            if var_name == "return":
+                function.setReturnType(data_type, SourceType.USER_DEFINED)
+                self.logger.log_retype_attempt(func_name, var_name, old_type, new_type, True)
+                print(f"    - Changed return type to {new_type} for {func_name}")
+                return True
+            
+            var = self.find_variable_in_function(function, var_name)
+            if var:
+                var.setDataType(data_type, SourceType.USER_DEFINED)
+                self.logger.log_retype_attempt(func_name, var_name, old_type, new_type, True)
+                print(f"    - Retyped {var_name} -> {new_type} in function {func_name}")
+                return True
+            else:
+                msg = f"Variable {var_name} not found in function {func_name}"
+                self.logger.log_retype_attempt(func_name, var_name, old_type, new_type, False, msg)
+                print(f"    - {msg}")
+                return False
+        except Exception as e:
+            self.logger.log_error("RETYPE", f"Exception during retype of {var_name}", e)
+            self.logger.log_retype_attempt(func_name, var_name, old_type, new_type, False, str(e))
             return False
 
     def get_data_type(self, type_str: str):
@@ -522,7 +542,6 @@ class FEATURE_APPLIER:
                     break
 
         return func_addr
-    
     def ensure_data_type_exists(self, type_str: str):
         """
         Create missing data type if it doesn't exist.
