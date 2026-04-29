@@ -24,6 +24,58 @@ from ghidra.program.model.listing import CodeUnit
 from ghidra.program.model.data import StructureDataType, DataTypeConflictHandler, CategoryPath
 from ghidra.program.model.data import PointerDataType
 
+def __init__(self, log_dir=None):
+        if log_dir is None:
+            script_path = Path(__file__).parent if '__file__' in globals() else Path.cwd()
+            log_dir = script_path / "GSS_Logs"
+        
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(exist_ok=True)
+        
+        self.session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Setup main log file
+        self.main_log_file = self.log_dir / f"gss_application_{self.session_timestamp}.log"
+        self.error_log_file = self.log_dir / f"gss_errors_{self.session_timestamp}.log"
+        self.summary_file = self.log_dir / f"gss_summary_{self.session_timestamp}.txt"
+        
+        self.logger = logging.getLogger("GSS_Feature_Applier")
+        self.logger.setLevel(logging.DEBUG)
+        
+        self.logger.handlers.clear()
+        
+        file_handler = logging.FileHandler(self.main_log_file, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        
+        error_handler = logging.FileHandler(self.error_log_file, encoding='utf-8')
+        error_handler.setLevel(logging.ERROR)
+        
+        # Console handler for important messages
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        error_handler.setFormatter(formatter)
+        
+        console_formatter = logging.Formatter('%(message)s')
+        console_handler.setFormatter(console_formatter)
+        
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(error_handler)
+        self.logger.addHandler(console_handler)
+        
+        # Track statistics
+        self.stats = {
+            'functions_processed': 0,
+            'signature_changes': {'attempted': 0, 'successful': 0, 'failed': 0},
+            'renames': {'attempted': 0, 'successful': 0, 'failed': 0},
+            'retypes': {'attempted': 0, 'successful': 0, 'failed': 0},
+            'pcode_renames': {'attempted': 0, 'successful': 0, 'failed': 0},
+            'errors': []
+        }
+        
+
 class FEATURE_APPLIER:
     def __init__(self):
         self.monitor = ConsoleTaskMonitor()
