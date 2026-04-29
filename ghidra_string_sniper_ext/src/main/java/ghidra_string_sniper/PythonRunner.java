@@ -9,7 +9,10 @@ import java.util.concurrent.*;
 import generic.jar.ResourceFile;
 
 public class PythonRunner {
-
+    /**
+     * Copies a resource directory from the Ghidra module data into a temporary
+     * directory on the filesystem. Returns the path to the temporary directory.
+     */
 	public static Path getTempDirFromResourceDir(String resourceDir) throws IOException {
 		if (!resourceDir.endsWith("/")) resourceDir += "/";
 		ResourceFile base = Application.getModuleDataSubDirectory(resourceDir);
@@ -20,6 +23,9 @@ public class PythonRunner {
 		return temp;
 	}
 
+	/**
+     * Recursively copies files from a source directory to a destination path.
+     */
 	private static void copyRecursive(File src, Path dest) throws IOException {
 		if (src.isDirectory()) {
 			for (File f : Objects.requireNonNull(src.listFiles()))
@@ -29,7 +35,9 @@ public class PythonRunner {
 			Files.copy(src.toPath(), dest, StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
-
+    /**
+     * Executes a Python script located in a resource directory, using the system Python interpreter.
+     */
 	public static RunResult runSystemPython(String scriptDir, String scriptName, List<String> args, long timeoutSec)
 		throws IOException, InterruptedException {
 
@@ -52,7 +60,9 @@ public class PythonRunner {
 
 		return new RunResult(p.exitValue(), out.toString());
 	}
-
+    /**
+     * Simple data container for the result of running a Python script.
+     */
 	public static class RunResult {
 		public final int exitCode;
 		public final String stdout;

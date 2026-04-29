@@ -137,6 +137,7 @@ public class HelpAction extends DockingAction {
 				creditsPage.add(createPersonLink.apply("Jack J '28", "https://github.com/JackJ30"));
 				creditsPage.add(createPersonLink.apply("Jack A '28", "https://github.com/J-AngeI"));
 				creditsPage.add(createPersonLink.apply("Cory Tsang '26", "https://github.com/CoryTsang"));
+				creditsPage.add(createPersonLink.apply("Jaden Bowers '27", "https://github.com/Jaden-Bowers"));
 
 				// Add tab
 				tabPanel.addTab("Credits", creditsPage);
