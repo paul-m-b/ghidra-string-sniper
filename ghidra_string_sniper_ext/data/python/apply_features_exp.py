@@ -8,6 +8,8 @@
 
 import json
 import re
+import logging
+from datetime import datetime
 from pathlib import Path
 from ghidra.program.model.listing import Function
 from ghidra.program.model.symbol import SourceType
@@ -25,6 +27,8 @@ from ghidra.program.model.data import StructureDataType, DataTypeConflictHandler
 from ghidra.program.model.data import PointerDataType
 
 class FeatureLogger:
+    """Custom logger for tracking feature application operations"""
+    
     def __init__(self, log_dir=None):
         if log_dir is None:
             script_path = Path(__file__).parent if '__file__' in globals() else Path.cwd()
@@ -75,8 +79,8 @@ class FeatureLogger:
             'pcode_renames': {'attempted': 0, 'successful': 0, 'failed': 0},
             'errors': []
         }
-
-        elf.logger.info("="*80)
+        
+        self.logger.info("="*80)
         self.logger.info(f"GSS Feature Applier Session Started: {self.session_timestamp}")
         self.logger.info(f"Log Directory: {self.log_dir}")
         self.logger.info("="*80)
@@ -119,7 +123,7 @@ class FeatureLogger:
             if details:
                 error_msg += f" - {details}"
             self.logger.error(error_msg)
-
+            
     def log_signature_attempt(self, function_name, old_sig, new_sig, success, details=None):
         """Log signature change operation"""
         self.stats['signature_changes']['attempted'] += 1
@@ -171,7 +175,7 @@ class FeatureLogger:
             f.write(f"Session: {self.session_timestamp}\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("="*80 + "\n\n")
-
+            
             f.write(f"Functions Processed: {self.stats['functions_processed']}\n\n")
             
             f.write("OPERATION STATISTICS:\n")
@@ -250,13 +254,19 @@ class FeatureLogger:
         print("="*60)
         
         self.logger.info("Session completed - summary report generated")
-
+        
+    def close(self):
+        """Close the logger"""
+        for handler in self.logger.handlers:
+            handler.close()
+            
 class FEATURE_APPLIER:
-    def __init__(self):
+    def __init__(self, logger=None):
         self.monitor = ConsoleTaskMonitor()
         self.current_program = getCurrentProgram()
         self.listing = self.current_program.getListing()
         self.dtm = self.current_program.getDataTypeManager()
+        self.logger = logger if logger else FeatureLogger()
         
     def parse_feature_line(self, line: str):
         """
@@ -366,25 +376,39 @@ class FEATURE_APPLIER:
         """Apply variable/function rename operation"""
         function = self.find_function(func_name)
         if not function:
-            print(f"Function {func_name} not found")
+            self.logger.log_error("RENAME", f"Function {func_name} not found")
+            self.logger.log_rename_attempt(func_name, old_name, new_name, False, "Function not found")
             return False
         
         # Check if it's a function rename
         if old_name == func_name:
-            function.setName(new_name, SourceType.USER_DEFINED)
-            print(f"    - Renamed function {old_name} -> {new_name}")
-            return True
+            try:
+                function.setName(new_name, SourceType.USER_DEFINED)
+                self.logger.log_rename_attempt(func_name, old_name, new_name, True)
+                print(f"    - Renamed function {old_name} -> {new_name}")
+                return True
+            except Exception as e:
+                self.logger.log_error("RENAME", f"Failed to rename function {old_name} -> {new_name}", e)
+                self.logger.log_rename_attempt(func_name, old_name, new_name, False, str(e))
+                return False
         
         # Otherwise it's a variable rename
         var = self.find_variable_in_function(function, old_name)
         if var:
-            var.setName(new_name, SourceType.USER_DEFINED)
-            print(f"    - Renamed {old_name} -> {new_name} in function {func_name}")
-            return True
+            try:
+                var.setName(new_name, SourceType.USER_DEFINED)
+                self.logger.log_rename_attempt(func_name, old_name, new_name, True)
+                print(f"    - Renamed {old_name} -> {new_name} in function {func_name}")
+                return True
+            except Exception as e:
+                self.logger.log_error("RENAME", f"Failed to rename variable {old_name} -> {new_name} in {func_name}", e)
+                self.logger.log_rename_attempt(func_name, old_name, new_name, False, str(e))
+                return False
         else:
-            print(f"    - Variable {old_name} not found in function {func_name}")
-        return False
-        
+            msg = f"Variable {old_name} not found in function {func_name}"
+            self.logger.log_rename_attempt(func_name, old_name, new_name, False, msg)
+            print(f"    - {msg}")
+            return False
         
     def apply_rename_at_pcode_level(self, func_name: str, old_name: str, new_name: str):
         """Rename variables at the pcode level, which works for decompiler-generated variables"""
