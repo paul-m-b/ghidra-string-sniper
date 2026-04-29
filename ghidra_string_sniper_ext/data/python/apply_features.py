@@ -521,6 +521,63 @@ class FEATURE_APPLIER:
         if features.get('variables'):
             print(f"\nApplying variable changes ({len(features['variables'])} variables)...")
 
+        for var_change in features['variables']:
+                # Handle rename
+                if var_change.get('proposed_name') and var_change['proposed_name'] != var_change.get('original_name'):
+                    print(f"RENAMING: {var_change['original_name']} -> {var_change['proposed_name']}")
+                    if self.apply_rename(
+                        function_name,
+                        var_change['original_name'],
+                        var_change['proposed_name']
+                    ) == False:
+                        self.apply_rename_at_pcode_level(
+                            function_name,
+                            var_change['original_name'],
+                            var_change['proposed_name']
+                        )
+                
+                # Handle retype
+                if var_change.get('proposed_type') and var_change['proposed_type'] != var_change.get('original_type'):
+                    var_name = var_change.get('proposed_name', var_change['original_name'])
+                    print(f"RETYPING: {var_name}: {var_change.get('original_type', 'unknown')} -> {var_change['proposed_type']}")
+                    self.apply_retype(
+                        function_name,
+                        var_name,
+                        var_change['proposed_type']
+                    )
+        
+        # Apply function renames (if not already handled by signature)
+        if features.get('function_renames') != None:
+            print(f"\nApplying function renames...")
+            for func_rename in features['function_renames']:
+                if func_rename.get('original') and func_rename.get('proposed'):
+                    # Only apply if it's for the current function
+                    if func_rename['original'] == function_name:
+                        print(f"    - Renaming function {func_rename['original']} -> {func_rename['proposed']}")
+                        self.apply_rename(
+                            function_name,
+                            func_rename['original'],
+                            func_rename['proposed']
+                        )
+        
+        print(f"\nCompleted changes for {function_name}")
+
+    def process_all_extractions(self, extractions_dir: str, pattern: str = "EXTRACTIONS.json"):
+        """
+        Process all JSON extraction files in hash subdirectories
+        
+        Args:
+            extractions_dir: Root directory containing hash subdirectories
+            pattern: Filename pattern to look for (default: EXTRACTIONS.json)
+        """
+        from pathlib import Path
+        
+        extractions_path = Path(extractions_dir)
+        
+        if not extractions_path.exists():
+            print(f"Error: Directory {extractions_dir} does not exist")
+            return
+
 def main():
     """
     Usage: 
