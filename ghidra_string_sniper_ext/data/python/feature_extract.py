@@ -80,25 +80,75 @@ class FEATURE_EXTRACT:
         
         response = self.LLM.query_LLM(self.MODEL, messages)
         content = response["choices"][0]["message"]["content"]
-        final_content = final_content + content + "\n"
+        
+        # Clean the response
+        content = self.clean_json_response(content)
+        
+        # Parse and validate JSON
+        try:
+            features = json.loads(content)
+            
+            # Ensure function_name is present
+            if 'function_name' not in features:
+                features['function_name'] = function_name
+                
+            # Write JSON file
+            fpath = decomps_dir() / str_hash / "EXTRACTIONS.json"
+            with open(fpath, "w", encoding="utf-8") as f:
+                json.dump(features, f, indent=2)
+                logging.info(f"Wrote feature proposals to {fpath}")
+                
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse LLM response as JSON: {e}")
+            logging.error(f"Raw response: {content}")
 
-        #VARIABLE NAMES
-
-        system_prompt = self.open_file("cfg/featext_system.txt", "r")
-        user_prompt = f"Extract features from the following functions:\nDECOMPILATION:\n{decomp_func}\n---\nOPEN-SOURCE CODE:\n{source_func}\n---"
-        messages = [
-            {"role":"system","content":system_prompt},
-            {"role":"user","content":user_prompt}
+    def extract_function_name(self, decomp_func: str) -> str:
+        """Extract function name from decompiled function text"""
+        import re
+        
+        # Look for function signature patterns
+        # Common patterns: void FUN_00123456(...) or int main(...)
+        patterns = [
+            r'(\w+)\s+([A-Za-z_][A-Za-z0-9_]+)\s*\(',
+            r'([A-Za-z_][A-Za-z0-9_]+)\s*\(',
         ]
-        response = self.LLM.query_LLM(self.MODEL, messages)
-        content = response["choices"][0]["message"]["content"]
-        final_content = final_content + content + "\n"
+        
+        lines = decomp_func.split('\n')
+        for line in lines:
+            for pattern in patterns:
+                match = re.search(pattern, line)
+                if match:
+                    # If pattern has two groups, take the second (function name)
+                    if len(match.groups()) > 1:
+                        return match.group(2)
+                    else:
+                        return match.group(1)
+        
+        return "unknown_function"
 
-        fpath = decomps_dir() / str_hash / "EXTRACTIONS.txt"
-        with open(fpath, "w", encoding="utf-8", errors="replace") as f:
-            f.write(content)
-            logging.info(f"Wrote proposals to {fpath}")
-
+    def clean_json_response(self, content: str) -> str:
+        """Clean LLM response to extract JSON"""
+        content = content.strip()
+        
+        # Remove markdown code blocks
+        if content.startswith('```json'):
+            content = content[7:]
+        elif content.startswith('```'):
+            content = content[3:]
+        
+        if content.endswith('```'):
+            content = content[:-3]
+        
+        content = content.strip()
+        
+        # If no JSON object found, try to extract it
+        if not (content.startswith('{') and content.endswith('}')):
+            import re
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                content = json_match.group(0)
+        
+        return content
 
     '''
     Iterate through function matching results and run suitable matches through feature extraction.
