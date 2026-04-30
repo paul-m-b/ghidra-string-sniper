@@ -5,6 +5,7 @@ This document guides you through the process of setting up the Ghidra String Sni
 ---
 
 ## Prerequisites
+
 Before you start, make sure you have the following:
 1. Ghidra installed and running on your machine.
 2. Binary file that you want to analyze using the plugin.
@@ -48,3 +49,34 @@ If you’re using Windows, during the setup, you will need to specify file paths
 6. Begin Analysis
     * Once the Ghidra String Sniper panel opens, click the green refresh arrow in the top-right corner to start the analysis.
     * Wait for the analysis to complete. This may take several minutes depending on the binary’s size.
+
+--- 
+
+## Interpreting Results
+
+Once the analysis is finished, you can:
+1. Select a string: Click on any of the returned strings to dive deeper.
+2. Explore additional insights: You’ll be redirected to a detailed analysis panel where you can see:
+    * LLM ratings for the selected string.
+    * Links to open-source repositories where this string may have been found.
+
+---
+
+## Troubleshooting
+
+If you encounter any issues during installation or analysis, consider the following steps:
+* Ensure that your OpenRouter API key is correctly placed in the TOKEN file
+* Verify that all file paths are correct in the batch or shell scripts.
+* If the analysis takes too long, try a smaller binary file to ensure the plugin works correctly.
+
+---
+
+## Contribution:
+
+We welcome contributions to improve the plugin. If you have suggestions, bug fixes, or enhancements, feel free to open an issue or submit a pull request.
+
+---
+
+## License
+
+This project is licensed under the MIT License
