@@ -10,13 +10,11 @@ title: Ghidra-String-Sniper
     font-family: "Segoe UI", monospace;
   }
 
-  /* Headers */
   h1, h2 {
     color: #00ffaa;
     letter-spacing: 1px;
   }
 
-  /* Links */
   a {
     color: #58a6ff;
     text-decoration: none;
@@ -26,20 +24,11 @@ title: Ghidra-String-Sniper
     text-decoration: underline;
   }
 
-  /* Subtle terminal-style accent */
   section {
     border-top: 1px solid #21262d;
     padding-top: 20px;
-  }
-
-  /* Code-style text blocks (optional future use) */
-  .code-block {
-    background: #161b22;
-    padding: 15px;
-    border-radius: 8px;
-    text-align: left;
-    font-family: monospace;
-    border: 1px solid #30363d;
+    margin: 40px auto;
+    max-width: 800px;
   }
 
   img {
@@ -60,13 +49,6 @@ title: Ghidra-String-Sniper
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* Section spacing */
-  section {
-    margin: 40px auto;
-    max-width: 800px;
-  }
-
-  /* Card container (for Status / Docs / License) */
   .card-container {
     display: flex;
     justify-content: center;
@@ -88,12 +70,6 @@ title: Ghidra-String-Sniper
     transform: translateY(-5px);
   }
 
-  .card h3 {
-    margin-top: 0;
-
-    
-  }
-  /* Two-column feature boxes */
   .dual-container {
     display: flex;
     justify-content: center;
@@ -122,37 +98,31 @@ title: Ghidra-String-Sniper
     margin-top: 0;
     color: #00ffaa;
   }
-
 </style>
 
+<!-- TITLE -->
 <h1 class="page-title" style="text-transform:uppercase;" id="header">
   Ghidra String Sniper
 </h1>
+
 <p><strong>Automated String-Based Library Identification for Reverse Engineering</strong></p>
 
 <h3 style="color:red;">
-  Our wonderful team: 
-  <a href="https://github.com/paul-m-b" target="_blank">Paul Biernat</a>, 
-  <a href="https://github.com/JackJ30" target="_blank">Jack J</a>, 
-  <a href="https://github.com/J-AngeI" target="_blank">Jack Angelicho</a>, 
-  <a href="https://github.com/Jaden-Bowers" target="_blank">Jaden Bowers</a>, 
-  <a href="https://github.com/CoryTsang" target="_blank">Cory Tsang</a>
+  Our team:
+  <a href="https://github.com/paul-m-b">Paul Biernat</a>,
+  <a href="https://github.com/JackJ30">Jack J</a>,
+  <a href="https://github.com/J-AngeI">Jack Angelicho</a>,
+  <a href="https://github.com/Jaden-Bowers">Jaden Bowers</a>,
+  <a href="https://github.com/CoryTsang">Cory Tsang</a>
 </h3>
+
 <h3>
   <a href="https://github.com/paul-m-b/ghidra-string-sniper">
     Developed during Fall 2025 – Spring 2026
   </a>
 </h3>
-<section>
-  <h2>Tech Stack</h2>
-  <p>
-    Ghidra (Java), Python backend, LLM integration, Sourcegraph API
-  </p>
-</section>
 
-<img src="https://raw.githubusercontent.com/paul-m-b/ghidra-string-sniper/experimental-features/Images/GSSLogo.png">" alt="GSS Logo">
-
-
+<!-- WHY THIS MATTERS -->
 <section>
   <h2>Why This Matters</h2>
   <p>
@@ -162,70 +132,112 @@ title: Ghidra-String-Sniper
   </p>
 </section>
 
-
+<!-- TECH STACK -->
 <section>
-  <h2>Introduction / Proposal</h2>
+  <h2>Tech Stack</h2>
   <p>
-    Reverse engineering proprietary binaries is often hindered by stripped symbols, making it difficult to quickly understand a program’s structure and behavior. Analysts may waste time reverse engineering common libraries or rely on guesswork, leading to inaccurate conclusions.
-  </p>
-  <p>
-    Even stripped binaries often contain useful strings that reveal functionality, libraries, or protocols. Tools like Sourcegraph allow large-scale searching across public repositories, enabling analysts to match these strings to real implementations and import relevant headers, symbols, and structures.
+    Ghidra (Java), Python backend, LLM integration, Sourcegraph API
   </p>
 </section>
 
+<img src="https://raw.githubusercontent.com/paul-m-b/ghidra-string-sniper/experimental-features/Images/GSSLogo.png">
+
+<!-- INTRO -->
+<section>
+  <h2>Introduction / Proposal</h2>
+  <p>
+    Reverse engineering proprietary binaries is often hindered by stripped symbols, making it difficult to quickly understand a program’s structure and behavior.
+  </p>
+  <p>
+    Even stripped binaries often contain useful strings that reveal functionality, libraries, or protocols. Sourcegraph enables large-scale search across public repositories to map these strings to real implementations.
+  </p>
+</section>
+
+<!-- SYSTEM OVERVIEW -->
 <section>
   <h2>System Overview</h2>
 
   <div class="dual-container">
 
     <div class="feature-box">
-      <h3>Our Initial Proposed Solution</h3>
+      <h3>Proposed Solution</h3>
       <ol>
-        <li>Extract meaningful strings from binary</li>
-        <li>Query Sourcegraph for matches</li>
-        <li>Use LLM to correlate results</li>
-        <li>Suggest symbols & structures</li>
+        <li>Extract strings from binary</li>
+        <li>Search Sourcegraph</li>
+        <li>Use LLM correlation</li>
+        <li>Suggest symbols/structures</li>
       </ol>
     </div>
 
     <div class="feature-box">
-      <h3>How It Works (Current Implementation)</h3>
+      <h3>How It Works</h3>
       <ol>
-        <li>String extraction from binary</li>
+        <li>String extraction</li>
         <li>Sourcegraph search pipeline</li>
-        <li>LLM similarity ranking</li>
-        <li>Candidate matches returned to analyst</li>
+        <li>LLM ranking</li>
+        <li>Results returned to analyst</li>
       </ol>
     </div>
 
   </div>
 </section>
 
-
-
-
+<!-- GOAL -->
 <section>
   <h2>Overall Goal</h2>
   <p>
-    Reduce redundant analysis, improve identification of known components, and provide a clearer high-level understanding of a binary early in the reverse engineering process.
+    Reduce redundant analysis, improve identification of known components, and accelerate early-stage binary understanding.
   </p>
 </section>
 
+<!-- USAGE  -->
+<section>
+  <h2>Usage Guide</h2>
+
+  <h3>Prerequisites</h3>
+  <ul>
+    <li>Ghidra installed</li>
+    <li>Target binary</li>
+    <li>OpenRouter API key</li>
+  </ul>
+
+  <h3>Installation</h3>
+  <ol>
+    <li>Clone repository</li>
+    <li>Add API key to TOKEN file</li>
+    <li>Run Windowsdeploy.bat or LinuxBuildInstall.sh</li>
+  </ol>
+
+  <h3>Running</h3>
+  <ol>
+    <li>Open Ghidra project</li>
+    <li>Import binary</li>
+    <li>Enable plugin in CodeBrowser</li>
+    <li>Run analysis from UI panel</li>
+  </ol>
+
+  <h3>Interpreting Results</h3>
+  <ol>
+    <li>Select extracted string</li>
+    <li>Review LLM ranking</li>
+    <li>Inspect matched repositories</li>
+  </ol>
+</section>
+
+<!-- STATUS / DOCS / LICENSE -->
 <section>
   <div class="card-container">
 
     <div class="card">
       <h3>Status</h3>
-      <p>
-        Ghidra String Sniper is in active development. The Python backend is functional as a proof of concept, and the Ghidra extension is in progress.
-      </p>
+      <p>Active development. Python PoC complete. Ghidra extension in progress.</p>
     </div>
 
     <div class="card">
       <h3>Documentation</h3>
       <p>
         <a href="https://github.com/paul-m-b/ghidra-string-sniper/blob/master/docs/README.md">
-          View Documentation
+          View Docs
         </a>
       </p>
     </div>
@@ -242,29 +254,33 @@ title: Ghidra-String-Sniper
   </div>
 </section>
 
+<!-- FUTURE WORK -->
 <section>
   <h2>Future Work</h2>
-  <ul style="text-align:left; display:inline-block;">
+  <ul>
     <li>Automatic symbol application in Ghidra</li>
-    <li>Better ranking using semantic embeddings</li>
-    <li>Support for additional code search engines</li>
-    <li>Integration with decompiler APIs</li>
+    <li>Semantic embedding ranking</li>
+    <li>More code search engines</li>
+    <li>Decompiler integration</li>
   </ul>
 </section>
 
+<!-- CREDITS -->
+<section>
+  <h2>Credits</h2>
 
+  <p>
+    Thanks to <a href="https://rpis.ec/">RPISEC</a> for inspiration.
+  </p>
 
-<p>
-  Thank you RPISEC for the inspiration behind this project!
-  <a href="https://rpis.ec/">RPISEC's website</a>
-</p>
+  <img src="https://raw.githubusercontent.com/paul-m-b/ghidra-string-sniper/experimental-features/Images/RPISEC.png">
 
-<img src="https://raw.githubusercontent.com/paul-m-b/ghidra-string-sniper/experimental-features/Images/RPISEC.png" alt="RPISEC logo">
+  <p>
+    Discord:
+    <a href="https://discord.com/invite/esNEjvuy78">
+      RPISEC Community
+    </a>
+  </p>
 
-<p>
-  RPISEC Discord:
-  <a href="https://discord.com/invite/esNEjvuy78">
-    Cool stuff and workshops happen here!
-  </a>
-</p>
-<p class="message">Thank you for checking our project out!</p>
+  <p class="message">Thank you for checking out our project!</p>
+</section>
