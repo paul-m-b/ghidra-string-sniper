@@ -4,6 +4,31 @@ title: Ghidra-String-Sniper
 ---
 
 <style>
+  /* Before/After comparison section */
+  .comparison-container {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .comparison-box {
+    width: 350px;
+    text-align: center;
+  }
+
+  .comparison-box p {
+    text-align: left;
+    font-size: 14px;
+    color: #8b949e;
+  }
+
+  .comparison-box img {
+    max-width: 100%;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+  }
   body {
     background-color: #0d1117;
     color: #c9d1d9;
@@ -177,6 +202,34 @@ title: Ghidra-String-Sniper
         <li>LLM ranking</li>
         <li>Results returned to analyst</li>
       </ol>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>Before vs After Analysis</h2>
+
+  <div class="comparison-container">
+
+    <div class="comparison-box">
+      <h3>Before</h3>
+      <p>
+        The function below is difficult to interpret due to obfuscated naming and
+        low-level technical structure. Understanding its purpose requires manual
+        reverse engineering and significant time investment.
+      </p>
+      <img src="https://raw.githubusercontent.com/paul-m-b/ghidra-string-sniper/experimental-features/Images/BeforeFunctionRename.png" alt="Before analysis">
+    </div>
+
+    <div class="comparison-box">
+      <h3>After</h3>
+      <p>
+        After applying Ghidra String Sniper, the function is renamed and enriched
+        with contextual insights. The breakdown on the right highlights the key
+        steps, allowing the analyst to quickly understand the function’s behavior.
+      </p>
+      <img src="https://raw.githubusercontent.com/paul-m-b/ghidra-string-sniper/experimental-features/Images/AfterFunctionRename.png" alt="After analysis">
     </div>
 
   </div>
